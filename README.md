@@ -64,7 +64,6 @@ A chave privada deve ser criada e guardada pelo responsável pelo aplicativo. Nu
 
 Cada build da branch `main` publica uma versão beta automaticamente quando os quatro secrets de assinatura estiverem configurados. O aplicativo consulta o canal beta e compara o código da versão antes de oferecer o download.
 
-
 ### Verificação da assinatura persistente
 
-Após cadastrar os quatro secrets, um novo push na branch `main` executa a compilação e tenta publicar uma release beta assinada. A confirmação definitiva é a presença da release `beta-N` com o APK `audiostretch-advanced-beta.apk` em GitHub Releases; a simples conclusão do build não confirma a publicação.
+Após cadastrar ou corrigir os quatro secrets, é necessário iniciar uma nova execução do workflow: alterações nos secrets não modificam execuções que já começaram. A confirmação definitiva é a presença da release `beta-N` com o APK `audiostretch-advanced-beta.apk` em GitHub Releases; a simples conclusão do build não confirma a publicação.
