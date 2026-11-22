@@ -42,7 +42,7 @@ jobs:
           AUDIOSTRETCH_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle --no-daemon assembleDebug \
-            -PciVersionCode=${{ 100000 + github.run_number }} \
+            -PciVersionCode=${{ github.run_number }} \
             -PciVersionName=0.1.${{ github.run_number }}-beta
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -51,14 +51,19 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
       - name: Publish beta release (requires persistent signing secrets)
-        if: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+        env:
+          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          HAS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          HAS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          HAS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        if: ${{ github.event_name != 'pull_request' && env.HAS_KEYSTORE != '' && env.HAS_KEYSTORE_PASSWORD != '' && env.HAS_KEY_ALIAS != '' && env.HAS_KEY_PASSWORD != '' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: beta-${{ 100000 + github.run_number }}
+          tag_name: beta-${{ github.run_number }}
           name: AudioStretch Advanced Beta ${{ github.run_number }}
           prerelease: true
           make_latest: false
           files: app/build/outputs/apk/debug/app-debug.apk
           body: |
             Versão beta gerada automaticamente pelo GitHub Actions.
-            Código de versão: ${{ 100000 + github.run_number }}
+            Código de versão: ${{ github.run_number }}
