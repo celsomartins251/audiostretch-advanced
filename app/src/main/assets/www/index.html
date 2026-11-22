@@ -34,6 +34,12 @@
         <button id="pauseBtn" class="secondary" aria-label="Pausar">Ⅱ</button>
       </div>
       <div class="volume"><label for="volume">VOLUME</label><input id="volume" type="range" min="0" max="1" step="0.01" value="0.85"></div>
+      <section class="oboe-test" aria-label="Teste experimental do motor Oboe">
+        <div class="oboe-title"><div><p class="eyebrow">MOTOR NATIVO</p><h3>Teste Oboe</h3></div><span class="experimental-tag">EXPERIMENTAL</span></div>
+        <p class="oboe-description">Reproduz o áudio importado pelo novo caminho nativo. A reprodução normal permanece no MediaPlayer.</p>
+        <div class="oboe-actions"><button id="testOboeBtn" class="tool gold-outline">▶ Testar motor Oboe</button><button id="stopOboeBtn" class="tool" disabled>■ Parar teste</button></div>
+        <p id="oboeStatus" class="oboe-status" aria-live="polite">Aguardando teste. Importe um áudio para começar.</p>
+      </section>
       <div class="divider"></div>
       <div class="section-head compact"><div><p class="eyebrow">EDIÇÃO</p><h2>Seleção e loop</h2></div><span id="selectionLabel" class="status">SEM SELEÇÃO</span></div>
       <div class="edit-tools">
