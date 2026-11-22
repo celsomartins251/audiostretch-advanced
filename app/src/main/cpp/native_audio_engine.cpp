@@ -116,10 +116,15 @@ public:
     }
     uint64_t queuedSamples() const { return ring_.queuedSamples(); }
     uint64_t underruns() const { return underruns_.load(std::memory_order_relaxed); }
+    void setGain(float gain) { gain_.store(std::clamp(gain, 0.0f, 1.0f), std::memory_order_relaxed); }
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream*, void* audioData, int32_t frames) override {
         auto* output = static_cast<float*>(audioData);
         const int32_t requested = frames * 2;
         const int32_t copied = ring_.read(output, requested);
+        const float gain = gain_.load(std::memory_order_relaxed);
+        if (gain != 1.0f) {
+            for (int32_t i = 0; i < copied; ++i) output[i] *= gain;
+        }
         if (copied < requested) {
             std::fill(output + copied, output + requested, 0.0f);
             underruns_.fetch_add(1, std::memory_order_relaxed);
@@ -136,6 +141,7 @@ private:
     std::shared_ptr<oboe::AudioStream> stream_;
     PcmRingBuffer ring_;
     std::atomic<uint64_t> underruns_{0};
+    std::atomic<float> gain_{1.0f};
 };
 NativeAudioEngine gEngine;
 }
@@ -156,6 +162,10 @@ Java_br_com_celsomartins_audiostretch_AudioNative_nativeResume(JNIEnv*, jobject)
 extern "C" JNIEXPORT jint JNICALL
 Java_br_com_celsomartins_audiostretch_AudioNative_nativeSampleRate(JNIEnv*, jobject) {
     return gEngine.sampleRate();
+}
+extern "C" JNIEXPORT void JNICALL
+Java_br_com_celsomartins_audiostretch_AudioNative_nativeSetGain(JNIEnv*, jobject, jfloat gain) {
+    gEngine.setGain(gain);
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_br_com_celsomartins_audiostretch_AudioNative_nativeClearBuffer(JNIEnv*, jobject) {

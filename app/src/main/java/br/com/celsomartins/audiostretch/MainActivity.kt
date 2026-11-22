@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private val decodeToken = AtomicInteger(0)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var oboeController: OboePlaybackController? = null
+    @Volatile private var outputVolume = 1.0f
 
     private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -243,6 +244,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         player?.let { if (it.isPlaying) it.pause() }
+        AudioNative.nativeSetGain(outputVolume)
         val started = oboeController?.start(uri) ?: false
         if (!started) {
             updateMessage("onOboeState", "O teste Oboe já está em execução. Aguarde ou interrompa-o.")
@@ -381,7 +383,11 @@ class MainActivity : ComponentActivity() {
         }
         @JavascriptInterface fun setVolume(value: Float) {
             val volume = value.coerceIn(0f, 1f)
-            runOnUiThread { player?.setVolume(volume, volume) }
+            outputVolume = volume
+            runOnUiThread {
+                player?.setVolume(volume, volume)
+                AudioNative.nativeSetGain(volume)
+            }
         }
         @JavascriptInterface fun getPosition(): Int = player?.currentPosition ?: 0
         @JavascriptInterface fun getDuration(): Int = player?.duration ?: 0

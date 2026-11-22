@@ -10,34 +10,96 @@
   const currentPosition = () => Number(api()?.getPosition?.() || 0);
   const draw = () => {
     const canvas = el("waveform"), scroller = el("waveScroll");
-    const width = Math.max(1, Math.floor(scroller.clientWidth * zoom)), height = 150;
+    const width = Math.max(1, Math.floor(scroller.clientWidth * zoom)), height = 184;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.style.width = width + "px"; canvas.style.height = height + "px";
     canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
-    const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = "#ffffff12"; ctx.lineWidth = 1;
-    for (let x = 0; x < width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
     if (!peaks.length || !duration) return;
+
+    const top = 29, bottom = 163, center = (top + bottom) / 2;
+    const amplitudeScale = (bottom - top) * 0.46;
     const xFor = ms => Math.max(0, Math.min(width, ms / duration * width));
+
+    // Área selecionada fica atrás da forma de onda.
     if (pointA !== null && pointB !== null) {
-      const left = xFor(Math.min(pointA, pointB)), right = xFor(Math.max(pointA, pointB));
-      ctx.fillStyle = "#d6a83a25"; ctx.fillRect(left, 0, Math.max(1, right - left), height);
-      ctx.strokeStyle = "#d6a83a"; ctx.lineWidth = 1;
-      [left, right].forEach(x => { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); });
+      const left = xFor(Math.min(pointA, pointB));
+      const right = xFor(Math.max(pointA, pointB));
+      ctx.fillStyle = "rgba(214,168,58,.11)";
+      ctx.fillRect(left, top - 8, Math.max(1, right - left), bottom - top + 16);
     }
-    ctx.strokeStyle = "#d6a83a"; ctx.lineWidth = Math.max(1, 1.2 * zoom);
-    ctx.beginPath();
-    const center = height / 2, scale = height * .43;
-    peaks.forEach((p, i) => {
-      const x = (i / (peaks.length - 1)) * width;
-      const amp = Math.max(1, p * scale);
-      ctx.moveTo(x, center - amp); ctx.lineTo(x, center + amp);
+
+    // Régua temporal adaptável ao zoom e à duração do arquivo.
+    const totalSeconds = duration / 1000;
+    const pixelsPerSecond = width / Math.max(1, totalSeconds);
+    const intervals = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+    const interval = intervals.find(value => value * pixelsPerSecond >= 82) || 3600;
+    ctx.font = "10px system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 1;
+    for (let second = 0; second <= totalSeconds; second += interval) {
+      const x = second / totalSeconds * width;
+      ctx.strokeStyle = "rgba(220,225,232,.10)";
+      ctx.beginPath(); ctx.moveTo(x, top - 5); ctx.lineTo(x, bottom + 5); ctx.stroke();
+      ctx.fillStyle = "rgba(190,197,207,.72)";
+      ctx.textAlign = second === 0 ? "left" : "center";
+      ctx.fillText(time(second * 1000), second === 0 ? x + 3 : x, 13);
+      ctx.strokeStyle = "rgba(220,225,232,.28)";
+      ctx.beginPath(); ctx.moveTo(x, 23); ctx.lineTo(x, 27); ctx.stroke();
+    }
+
+    // Linhas de referência de amplitude, discretas para não competir com o áudio.
+    ctx.setLineDash([3, 5]);
+    [-0.5, 0, 0.5].forEach(level => {
+      const y = center - level * amplitudeScale;
+      ctx.strokeStyle = level === 0 ? "rgba(232,236,242,.30)" : "rgba(220,225,232,.09)";
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
     });
-    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Envelope preenchido, agregado à resolução real do canvas.
+    const waveGradient = ctx.createLinearGradient(0, top, 0, bottom);
+    waveGradient.addColorStop(0, "#f0d58a");
+    waveGradient.addColorStop(.48, "#d6a83a");
+    waveGradient.addColorStop(1, "#8c6726");
+    ctx.fillStyle = waveGradient;
+    for (let x = 0; x < Math.ceil(width); x++) {
+      const first = Math.floor(x / width * peaks.length);
+      const last = Math.max(first + 1, Math.floor((x + 1) / width * peaks.length));
+      let peak = 0;
+      for (let i = first; i < Math.min(last, peaks.length); i++) {
+        if (peaks[i] > peak) peak = peaks[i];
+      }
+      if (peak <= 0.001) continue;
+      const amplitude = Math.max(1, Math.min(amplitudeScale, peak * amplitudeScale));
+      ctx.fillRect(x, center - amplitude, 1.25, amplitude * 2);
+    }
+
+    // Marcadores A e B.
+    const marker = (position, label) => {
+      if (position === null) return;
+      const x = xFor(position);
+      ctx.strokeStyle = "#f0c96b";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x, top - 5); ctx.lineTo(x, bottom + 5); ctx.stroke();
+      ctx.fillStyle = "#f0c96b";
+      ctx.textAlign = x > width - 25 ? "right" : "left";
+      ctx.fillText(label, x + (x > width - 25 ? -4 : 4), bottom + 14);
+    };
+    marker(pointA, "A");
+    marker(pointB, "B");
+
+    // Cursor de reprodução com cabeçote e linha de alto contraste.
     const playX = xFor(currentPosition());
-    ctx.strokeStyle = "#f4f0e7"; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(playX, 0); ctx.lineTo(playX, height); ctx.stroke();
+    ctx.strokeStyle = "#fffdf5";
+    ctx.lineWidth = 1.35;
+    ctx.beginPath(); ctx.moveTo(playX, 23); ctx.lineTo(playX, bottom + 6); ctx.stroke();
+    ctx.fillStyle = "#fffdf5";
+    ctx.beginPath();
+    ctx.moveTo(playX - 4, 23); ctx.lineTo(playX + 4, 23); ctx.lineTo(playX, 29); ctx.closePath();
+    ctx.fill();
   };
   const updateSelection = () => {
     const valid = pointA !== null && pointB !== null && pointB > pointA;
