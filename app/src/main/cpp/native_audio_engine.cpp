@@ -57,6 +57,8 @@ public:
             ->setSharingMode(oboe::SharingMode::Exclusive)
             ->setFormat(oboe::AudioFormat::Float)
             ->setChannelCount(oboe::ChannelCount::Stereo)
+            ->setUsage(oboe::Usage::Media)
+            ->setContentType(oboe::ContentType::Music)
             ->setSampleRate(oboe::kUnspecified)
             ->setDataCallback(this);
         auto result = builder.openStream(stream_);
