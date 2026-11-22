@@ -44,6 +44,8 @@ jobs:
           gradle --no-daemon assembleDebug \
             -PciVersionCode=${{ github.run_number }} \
             -PciVersionName=0.1.${{ github.run_number }}-beta
+      - name: Prepare beta release APK filename
+        run: cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/audiostretch-advanced-beta.apk"
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -63,7 +65,7 @@ jobs:
           name: AudioStretch Advanced Beta ${{ github.run_number }}
           prerelease: true
           make_latest: false
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: ${{ runner.temp }}/audiostretch-advanced-beta.apk
           body: |
             Versão beta gerada automaticamente pelo GitHub Actions.
             Código de versão: ${{ github.run_number }}
