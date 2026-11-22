@@ -117,4 +117,40 @@
     draw();
   }, 180);
   updateSelection();
+  // Atualizador integrado: consulta o canal beta do GitHub Releases.
+  let pendingUpdate = null;
+  const updateStatus = message => { el("updateStatus").textContent = message; };
+  const checkUpdate = () => {
+    pendingUpdate = null;
+    el("downloadUpdateBtn").hidden = true;
+    el("updateDetails").hidden = true;
+    el("updateProgress").hidden = true;
+    updateStatus("Consultando o canal beta…");
+    if (api()?.checkForUpdates) api().checkForUpdates();
+    else updateStatus("Atualizador disponível somente na versão Android do aplicativo.");
+  };
+  el("updatesBtn").addEventListener("click", () => { document.querySelector(".updates-panel").scrollIntoView({behavior:"smooth",block:"center"}); checkUpdate(); });
+  el("checkUpdatesBtn").addEventListener("click", checkUpdate);
+  el("downloadUpdateBtn").addEventListener("click", () => {
+    if (!pendingUpdate) return;
+    el("downloadUpdateBtn").disabled = true;
+    updateStatus("Baixando a atualização…");
+    el("updateProgress").hidden = false;
+    api()?.downloadUpdate(pendingUpdate.url, pendingUpdate.digest || "");
+  });
+  window.onUpdateAvailable = info => {
+    pendingUpdate = info;
+    updateStatus("Nova versão beta disponível: " + info.tag);
+    el("updateDetails").textContent = (info.title || info.tag) + "\n\n" + (info.notes || "Sem notas de versão.");
+    el("updateDetails").hidden = false;
+    el("downloadUpdateBtn").hidden = false;
+    el("downloadUpdateBtn").disabled = false;
+  };
+  window.onUpdateStatus = updateStatus;
+  window.onUpdateError = message => { updateStatus("Atualização: " + message); el("downloadUpdateBtn").disabled = false; };
+  window.onUpdateProgress = percent => {
+    if (percent >= 0) el("updateProgressBar").style.width = Math.min(100, percent) + "%";
+    updateStatus(percent >= 0 ? "Baixando… " + percent + "%" : "Baixando atualização…");
+  };
+  window.onUpdateDownloaded = updateStatus;
 })();
