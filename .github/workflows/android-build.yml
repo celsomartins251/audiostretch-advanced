@@ -26,14 +26,23 @@ jobs:
         with:
           gradle-version: "8.9"
       - name: Prepare persistent signing key (optional)
+        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/audiostretch-release.jks"
-            echo "AUDIOSTRETCH_KEYSTORE_PATH=$RUNNER_TEMP/audiostretch-release.jks" >> "$GITHUB_ENV"
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            KEYSTORE_FILE="$RUNNER_TEMP/audiostretch-release.jks"
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+            keytool -list -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+            echo "AUDIOSTRETCH_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Persistent signing key validated."
           else
-            echo "Persistent signing key not configured; no installable beta release will be published."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Persistent signing is incomplete. Building a test APK only; beta release will be skipped."
           fi
       - name: Build debug APK
         env:
@@ -45,6 +54,7 @@ jobs:
             -PciVersionCode=${{ github.run_number }} \
             -PciVersionName=0.1.${{ github.run_number }}-beta
       - name: Prepare beta release APK filename
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
         run: cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/audiostretch-advanced-beta.apk"
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -52,13 +62,8 @@ jobs:
           name: audiostretch-advanced-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-      - name: Publish beta release (requires persistent signing secrets)
-        env:
-          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          HAS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          HAS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          HAS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        if: ${{ github.event_name != 'pull_request' && env.HAS_KEYSTORE != '' && env.HAS_KEYSTORE_PASSWORD != '' && env.HAS_KEY_ALIAS != '' && env.HAS_KEY_PASSWORD != '' }}
+      - name: Publish beta release (requires validated persistent signing)
+        if: ${{ github.event_name != 'pull_request' && steps.signing.outputs.enabled == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: beta-${{ github.run_number }}
