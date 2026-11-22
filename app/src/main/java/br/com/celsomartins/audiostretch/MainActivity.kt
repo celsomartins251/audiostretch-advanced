@@ -241,8 +241,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateMessage(function: String, message: String) {
-        val safe = message.replace("\\\\", " ").replace("\\\"", " ").replace("\\n", " ")
-        runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.$function && window.$function(\\\"$safe\\\")", null) }
+        val safe = message.replace("\\", " ").replace("\"", " ").replace("\n", " ")
+        runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.$function && window.$function(\"$safe\")", null) }
     }
 
     private fun checkForUpdates() {
