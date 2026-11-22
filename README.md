@@ -41,3 +41,25 @@ A posição temporal canônica do motor DSP será expressa em frames/amostras. R
 ## Repositório
 
 https://github.com/celsomartins251/audiostretch-advanced
+
+
+## Atualizações integradas (canal beta)
+
+O aplicativo consulta as versões beta publicadas em GitHub Releases, apresenta as notas, baixa o APK e solicita ao instalador oficial do Android a confirmação da instalação. O Android exige autorização do usuário para instalar aplicativos desta origem; não existe instalação silenciosa.
+
+### Assinatura persistente obrigatória
+
+Para instalar uma atualização por cima da versão anterior, todos os APKs precisam usar a mesma chave. Configure estes quatro GitHub Actions Secrets no repositório:
+
+- `ANDROID_KEYSTORE_BASE64`: arquivo JKS/keystore codificado em Base64.
+- `ANDROID_KEYSTORE_PASSWORD`: senha do keystore.
+- `ANDROID_KEY_ALIAS`: alias da chave.
+- `ANDROID_KEY_PASSWORD`: senha da chave.
+
+A chave privada deve ser criada e guardada pelo responsável pelo aplicativo. Nunca a coloque no código-fonte ou em arquivos públicos. Sem os quatro secrets, o workflow continua gerando artefatos de teste, mas não publica releases atualizáveis.
+
+**Migração da versão de teste inicial:** os APKs antigos foram assinados com a chave debug temporária do GitHub Actions. Como essa chave não foi persistida, o Android não pode garantir atualização direta desses APKs. Depois de configurar a assinatura persistente, será necessária uma instalação de transição: desinstalar a versão antiga e instalar uma vez o APK assinado com a nova chave. A partir dessa instalação, as versões beta poderão ser atualizadas dentro do aplicativo, preservando os dados do app.
+
+### Publicação
+
+Cada build da branch `main` publica uma versão beta automaticamente quando os quatro secrets de assinatura estiverem configurados. O aplicativo consulta o canal beta e compara o código da versão antes de oferecer o download.
