@@ -13,6 +13,8 @@
     const width = Math.max(1, Math.floor(scroller.clientWidth * zoom)), height = 184;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.style.width = width + "px"; canvas.style.height = height + "px";
+    // Reserva espaço após o áudio para manter o cursor visível perto do fim.
+    canvas.style.marginRight = zoom > 1 ? Math.round(scroller.clientWidth * 0.28) + "px" : "0px";
     canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -101,6 +103,18 @@
     ctx.moveTo(playX - 4, 23); ctx.lineTo(playX + 4, 23); ctx.lineTo(playX, 29); ctx.closePath();
     ctx.fill();
   };
+  const keepPlayheadVisible = position => {
+    const scroller = el("waveScroll"), canvas = el("waveform");
+    if (!duration || !canvas.clientWidth || !scroller.clientWidth) return;
+    const x = Math.max(0, Math.min(canvas.clientWidth, position / duration * canvas.clientWidth));
+    const left = scroller.scrollLeft, right = left + scroller.clientWidth;
+    const edge = Math.min(72, scroller.clientWidth * 0.18);
+    if (x > right - edge) {
+      scroller.scrollLeft = Math.min(scroller.scrollWidth - scroller.clientWidth, Math.max(0, x - scroller.clientWidth * 0.72));
+    } else if (x < left + edge && left > 0) {
+      scroller.scrollLeft = Math.max(0, x - scroller.clientWidth * 0.20);
+    }
+  };
   const updateSelection = () => {
     const valid = pointA !== null && pointB !== null && pointB > pointA;
     el("selectionLabel").textContent = valid ? time(pointA) + " – " + time(pointB) : (pointA !== null ? "PONTO A: " + time(pointA) : "SEM SELEÇÃO");
@@ -157,7 +171,7 @@
   el("waveform").addEventListener("click", e => {
     if (!duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left + el("waveScroll").scrollLeft;
+    const x = e.clientX - rect.left;
     api()?.seekTo(Math.round(Math.max(0, Math.min(1, x / e.currentTarget.clientWidth)) * duration));
   });
   el("setA").addEventListener("click", () => { pointA = currentPosition(); pointB = null; loopEnabled = false; updateSelection(); });
@@ -198,7 +212,9 @@
     const native = api(); if (!native || !native.hasAudio()) return;
     const position = native.getPosition();
     if (!seeking) { el("currentTime").textContent = time(position); el("seek").value = duration ? String(Math.min(1000, position / duration * 1000)) : "0"; }
-    el("status").textContent = native.isPlaying() ? "REPRODUZINDO" : "PRONTO";
+    const playing = native.isPlaying();
+    el("status").textContent = playing ? "REPRODUZINDO" : "PRONTO";
+    if (playing) keepPlayheadVisible(position);
     if (loopEnabled && pointA !== null && pointB !== null && position >= pointB && position - lastLoopSeek > 80) {
       lastLoopSeek = position; native.seekTo(Math.round(pointA));
     }
