@@ -10,19 +10,23 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="mark">A</span><div><strong>AudioStretch</strong><small>ADVANCED</small></div></div>
-    <span class="phase">FASE 1 · TRANSPORTE</span>
+    <span class="phase">FASE 1 · EDIÇÃO TEMPORAL</span>
   </header>
   <main>
     <section class="welcome">
       <p class="eyebrow">ESTÚDIO DE ÁUDIO</p>
       <h1>Seu áudio.<br><em>Seu controle.</em></h1>
-      <p class="muted">Importe uma gravação para iniciar a análise.</p>
+      <p class="muted">Importe uma gravação para visualizar e marcar trechos com precisão.</p>
       <button id="importBtn" class="primary">＋ Importar áudio</button>
       <p id="fileName" class="file-name">Nenhum arquivo carregado</p>
     </section>
     <section class="workspace">
       <div class="section-head"><div><p class="eyebrow">TRANSPORTE</p><h2>Reprodução</h2></div><span id="status" class="status">AGUARDANDO ÁUDIO</span></div>
-      <div class="wave-panel"><canvas id="waveform" aria-label="Área reservada para waveform"></canvas><div class="wave-note">Waveform real: próxima etapa de implementação.</div></div>
+      <div class="wave-panel">
+        <div id="waveScroll" class="wave-scroll"><canvas id="waveform" aria-label="Forma de onda do áudio"></canvas></div>
+        <div id="waveNote" class="wave-note">A forma de onda será calculada após importar o áudio.</div>
+      </div>
+      <div class="zoom-row"><label for="zoom">ZOOM DA FORMA DE ONDA</label><input id="zoom" type="range" min="1" max="6" step="0.5" value="1"><span id="zoomValue">1×</span></div>
       <div class="timeline"><span id="currentTime">00:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="totalTime">00:00</span></div>
       <div class="controls">
         <button id="stopBtn" class="secondary" aria-label="Parar">■</button>
@@ -30,8 +34,18 @@
         <button id="pauseBtn" class="secondary" aria-label="Pausar">Ⅱ</button>
       </div>
       <div class="volume"><label for="volume">VOLUME</label><input id="volume" type="range" min="0" max="1" step="0.01" value="0.85"></div>
+      <div class="divider"></div>
+      <div class="section-head compact"><div><p class="eyebrow">EDIÇÃO</p><h2>Seleção e loop</h2></div><span id="selectionLabel" class="status">SEM SELEÇÃO</span></div>
+      <div class="edit-tools">
+        <button id="setA" class="tool">Definir ponto A</button>
+        <button id="setB" class="tool">Definir ponto B</button>
+        <button id="loopBtn" class="tool gold-outline">Ativar loop A–B</button>
+        <button id="clearSelection" class="tool">Limpar</button>
+      </div>
+      <div class="marker-head"><span class="eyebrow">MARCADORES</span><button id="addMarker" class="text-button">＋ Adicionar no ponto atual</button></div>
+      <div id="markers" class="markers"><span class="empty-markers">Nenhum marcador salvo.</span></div>
     </section>
-    <section class="future"><p class="eyebrow">ROADMAP</p><div class="chips"><span>Time Stretch</span><span>Pitch Shift</span><span>Separação de stems</span><span>Partituras</span><span>Mixer multipista</span></div></section>
+    <section class="future"><p class="eyebrow">PRÓXIMAS TECNOLOGIAS</p><div class="chips"><span>Time Stretch</span><span>Pitch Shift</span><span>Separação de stems</span><span>Partituras</span><span>Mixer multipista</span></div></section>
     <p id="error" class="error" role="alert"></p>
   </main>
   <script src="js/app.js"></script>
