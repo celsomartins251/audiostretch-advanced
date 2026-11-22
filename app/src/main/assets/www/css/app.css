@@ -18,3 +18,9 @@
 .oboe-actions{display:flex;gap:8px;flex-wrap:wrap}
 .oboe-actions button{flex:1;min-width:130px}
 .oboe-status{margin:12px 0 0;color:#d8c18a;min-height:17px}
+
+/* Cursor em camada própria: atualização suave sem redesenhar a forma de onda. */
+.wave-scroll{position:relative;isolation:isolate;scroll-behavior:auto;}
+.wave-scroll canvas{position:relative;z-index:1;}
+.playhead{position:absolute;z-index:2;left:0;top:23px;height:146px;width:1.5px;background:#fffdf5;box-shadow:0 0 5px rgba(255,253,245,.38);pointer-events:none;will-change:transform;transform:translate3d(0,0,0);}
+.playhead::before{content:"";position:absolute;left:-3.5px;top:0;width:0;height:0;border-left:4.25px solid transparent;border-right:4.25px solid transparent;border-top:6px solid #fffdf5;}

@@ -93,15 +93,13 @@
     marker(pointA, "A");
     marker(pointB, "B");
 
-    // Cursor de reprodução com cabeçote e linha de alto contraste.
-    const playX = xFor(currentPosition());
-    ctx.strokeStyle = "#fffdf5";
-    ctx.lineWidth = 1.35;
-    ctx.beginPath(); ctx.moveTo(playX, 23); ctx.lineTo(playX, bottom + 6); ctx.stroke();
-    ctx.fillStyle = "#fffdf5";
-    ctx.beginPath();
-    ctx.moveTo(playX - 4, 23); ctx.lineTo(playX + 4, 23); ctx.lineTo(playX, 29); ctx.closePath();
-    ctx.fill();
+    // O cursor é renderizado em uma camada independente para evitar redesenhar a onda.
+  };
+  const updatePlayhead = position => {
+    const canvas = el("waveform"), cursor = el("playhead");
+    if (!duration || !canvas.clientWidth) { cursor.style.transform = "translate3d(0,0,0)"; return; }
+    const x = Math.max(0, Math.min(canvas.clientWidth, position / duration * canvas.clientWidth));
+    cursor.style.transform = "translate3d(" + x.toFixed(2) + "px,0,0)";
   };
   const keepPlayheadVisible = position => {
     const scroller = el("waveScroll"), canvas = el("waveform");
@@ -109,11 +107,12 @@
     const x = Math.max(0, Math.min(canvas.clientWidth, position / duration * canvas.clientWidth));
     const left = scroller.scrollLeft, right = left + scroller.clientWidth;
     const edge = Math.min(72, scroller.clientWidth * 0.18);
-    if (x > right - edge) {
-      scroller.scrollLeft = Math.min(scroller.scrollWidth - scroller.clientWidth, Math.max(0, x - scroller.clientWidth * 0.72));
-    } else if (x < left + edge && left > 0) {
-      scroller.scrollLeft = Math.max(0, x - scroller.clientWidth * 0.20);
-    }
+    let target = left;
+    if (x > right - edge) target = x - scroller.clientWidth * 0.72;
+    else if (x < left + edge && left > 0) target = x - scroller.clientWidth * 0.20;
+    target = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, target));
+    // Aproximação progressiva: acompanha a música sem saltos de rolagem.
+    scroller.scrollLeft = left + (target - left) * 0.22;
   };
   const updateSelection = () => {
     const valid = pointA !== null && pointB !== null && pointB > pointA;
@@ -202,11 +201,11 @@
     peaks = Array.isArray(data) ? data.map(v => Math.max(0, Math.min(1, Number(v) || 0))) : [];
     el("waveNote").hidden = peaks.length > 0;
     if (!peaks.length) el("waveNote").textContent = "Não foi possível gerar a forma de onda deste arquivo.";
-    draw();
+    draw(); updatePlayhead(currentPosition());
   };
   window.onNativeWaveformError = message => { el("waveNote").hidden = false; el("waveNote").textContent = "Waveform indisponível: " + String(message); };
   window.onNativeAudioError = message => { el("error").textContent = String(message); };
-  window.onNativePosition = position => { if (!seeking && duration) el("seek").value = String(Math.min(1000, Number(position) / duration * 1000)); draw(); };
+  window.onNativePosition = position => { if (!seeking && duration) el("seek").value = String(Math.min(1000, Number(position) / duration * 1000)); updatePlayhead(Number(position) || 0); };
   window.addEventListener("resize", draw);
   window.setInterval(() => {
     const native = api(); if (!native || !native.hasAudio()) return;
@@ -214,12 +213,12 @@
     if (!seeking) { el("currentTime").textContent = time(position); el("seek").value = duration ? String(Math.min(1000, position / duration * 1000)) : "0"; }
     const playing = native.isPlaying();
     el("status").textContent = playing ? "REPRODUZINDO" : "PRONTO";
+    updatePlayhead(position);
     if (playing) keepPlayheadVisible(position);
     if (loopEnabled && pointA !== null && pointB !== null && position >= pointB && position - lastLoopSeek > 80) {
       lastLoopSeek = position; native.seekTo(Math.round(pointA));
     }
-    draw();
-  }, 180);
+  }, 33);
   updateSelection();
   // Atualizador integrado: consulta o canal beta do GitHub Releases.
   let pendingUpdate = null;
