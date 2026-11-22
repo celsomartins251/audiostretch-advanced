@@ -187,7 +187,7 @@ internal object PcmDecoder {
                 }
             }
 
-            return Result(initialRate, outputSampleRate, initialChannels, outputFrames)
+            return Result(sourceRate, outputSampleRate, sourceChannels, outputFrames)
         } finally {
             try { decoder?.stop() } catch (_: Exception) { }
             try { decoder?.release() } catch (_: Exception) { }
