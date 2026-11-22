@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#090a0c">
+  <title>AudioStretch Advanced</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark">A</span><div><strong>AudioStretch</strong><small>ADVANCED</small></div></div>
+    <span class="phase">FASE 1 · TRANSPORTE</span>
+  </header>
+  <main>
+    <section class="welcome">
+      <p class="eyebrow">ESTÚDIO DE ÁUDIO</p>
+      <h1>Seu áudio.<br><em>Seu controle.</em></h1>
+      <p class="muted">Importe uma gravação para iniciar a análise.</p>
+      <button id="importBtn" class="primary">＋ Importar áudio</button>
+      <p id="fileName" class="file-name">Nenhum arquivo carregado</p>
+    </section>
+    <section class="workspace">
+      <div class="section-head"><div><p class="eyebrow">TRANSPORTE</p><h2>Reprodução</h2></div><span id="status" class="status">AGUARDANDO ÁUDIO</span></div>
+      <div class="wave-panel"><canvas id="waveform" aria-label="Área reservada para waveform"></canvas><div class="wave-note">Waveform real: próxima etapa de implementação.</div></div>
+      <div class="timeline"><span id="currentTime">00:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="totalTime">00:00</span></div>
+      <div class="controls">
+        <button id="stopBtn" class="secondary" aria-label="Parar">■</button>
+        <button id="playBtn" class="play" aria-label="Reproduzir">▶</button>
+        <button id="pauseBtn" class="secondary" aria-label="Pausar">Ⅱ</button>
+      </div>
+      <div class="volume"><label for="volume">VOLUME</label><input id="volume" type="range" min="0" max="1" step="0.01" value="0.85"></div>
+    </section>
+    <section class="future"><p class="eyebrow">ROADMAP</p><div class="chips"><span>Time Stretch</span><span>Pitch Shift</span><span>Separação de stems</span><span>Partituras</span><span>Mixer multipista</span></div></section>
+    <p id="error" class="error" role="alert"></p>
+  </main>
+  <script src="js/app.js"></script>
+</body>
+</html>
