@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var pendingUpdateFile: File? = null
     private val decodeToken = AtomicInteger(0)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var oboeController: OboePlaybackController? = null
 
     private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -76,10 +77,19 @@ class MainActivity : ComponentActivity() {
         }
         webView.webChromeClient = WebChromeClient()
         webView.addJavascriptInterface(AudioBridge(), "AudioBridge")
+        oboeController = OboePlaybackController(this) { message ->
+            mainHandler.post {
+                if (::webView.isInitialized) {
+                    val safe = JSONObject.quote(message)
+                    webView.evaluateJavascript("window.onOboeState && window.onOboeState($safe)", null)
+                }
+            }
+        }
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
     private fun loadAudio(uri: Uri) {
+        oboeController?.stop()
         decodeToken.incrementAndGet()
         releasePlayer()
         try {
@@ -226,6 +236,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun startOboeTest() {
+        val uri = currentUri
+        if (uri == null) {
+            updateMessage("onOboeState", "Importe um áudio antes de iniciar o teste Oboe.")
+            return
+        }
+        player?.let { if (it.isPlaying) it.pause() }
+        val started = oboeController?.start(uri) ?: false
+        if (!started) {
+            updateMessage("onOboeState", "O teste Oboe já está em execução. Aguarde ou interrompa-o.")
+        }
+    }
+
+    private fun stopOboeTest() {
+        oboeController?.stop()
+    }
+
     private fun notifyError(message: String) {
         val safe = message.replace("\\", " ").replace("\"", " ").replace("\n", " ")
         webView.post {
@@ -327,6 +354,8 @@ class MainActivity : ComponentActivity() {
         decodeToken.incrementAndGet()
         decodeExecutor.shutdownNow()
         updateExecutor.shutdownNow()
+        oboeController?.close()
+        oboeController = null
         releasePlayer()
         webView.removeJavascriptInterface("AudioBridge")
         webView.destroy()
@@ -335,6 +364,8 @@ class MainActivity : ComponentActivity() {
 
     inner class AudioBridge {
         @JavascriptInterface fun importAudio() { runOnUiThread { audioPicker.launch(arrayOf("audio/*")) } }
+        @JavascriptInterface fun testOboe() { startOboeTest() }
+        @JavascriptInterface fun stopOboeTest() { stopOboeTest() }
         @JavascriptInterface fun checkForUpdates() { this@MainActivity.checkForUpdates() }
         @JavascriptInterface fun downloadUpdate(url: String, digest: String) { this@MainActivity.downloadUpdate(url, digest.takeIf { it.isNotBlank() && it != "null" }) }
         @JavascriptInterface fun play() { runOnUiThread { player?.let { if (!it.isPlaying) it.start() } } }
