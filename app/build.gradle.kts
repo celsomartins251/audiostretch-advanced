@@ -5,18 +5,35 @@ plugins {
 android {
     namespace = "br.com.celsomartins.audiostretch"
     compileSdk = 35
+    signingConfigs {
+        create("persistent") {
+            val keystorePath = System.getenv("AUDIOSTRETCH_KEYSTORE_PATH")
+            val keystorePassword = System.getenv("AUDIOSTRETCH_KEYSTORE_PASSWORD")
+            val aliasValue = System.getenv("AUDIOSTRETCH_KEY_ALIAS")
+            val keyPasswordValue = System.getenv("AUDIOSTRETCH_KEY_PASSWORD")
+            if (!keystorePath.isNullOrBlank() && !keystorePassword.isNullOrBlank() && !aliasValue.isNullOrBlank() && !keyPasswordValue.isNullOrBlank()) {
+                storeFile = file(keystorePath); storePassword = keystorePassword; keyAlias = aliasValue; keyPassword = keyPasswordValue
+            }
+        }
+    }
     defaultConfig {
         applicationId = "br.com.celsomartins.audiostretch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("ciVersionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("ciVersionName").orNull ?: "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a") }
         externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
     }
     buildTypes {
-        debug { applicationIdSuffix = ".debug" }
-        release { isMinifyEnabled = false }
+        debug {
+            applicationIdSuffix = ".debug"
+            if (!System.getenv("AUDIOSTRETCH_KEYSTORE_PATH").isNullOrBlank()) signingConfig = signingConfigs.getByName("persistent")
+        }
+        release {
+            isMinifyEnabled = false
+            if (!System.getenv("AUDIOSTRETCH_KEYSTORE_PATH").isNullOrBlank()) signingConfig = signingConfigs.getByName("persistent")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
