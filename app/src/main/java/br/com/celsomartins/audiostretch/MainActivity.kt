@@ -364,8 +364,8 @@ class MainActivity : ComponentActivity() {
 
     inner class AudioBridge {
         @JavascriptInterface fun importAudio() { runOnUiThread { audioPicker.launch(arrayOf("audio/*")) } }
-        @JavascriptInterface fun testOboe() { startOboeTest() }
-        @JavascriptInterface fun stopOboeTest() { stopOboeTest() }
+        @JavascriptInterface fun testOboe() { runOnUiThread { startOboeTest() } }
+        @JavascriptInterface fun stopOboeTest() { runOnUiThread { this@MainActivity.stopOboeTest() } }
         @JavascriptInterface fun checkForUpdates() { this@MainActivity.checkForUpdates() }
         @JavascriptInterface fun downloadUpdate(url: String, digest: String) { this@MainActivity.downloadUpdate(url, digest.takeIf { it.isNotBlank() && it != "null" }) }
         @JavascriptInterface fun play() { runOnUiThread { player?.let { if (!it.isPlaying) it.start() } } }
