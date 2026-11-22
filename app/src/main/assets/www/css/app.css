@@ -8,3 +8,13 @@
 .update-progress{height:6px;background:#292929;border-radius:8px;margin-top:15px;overflow:hidden}
 .update-progress>div{height:100%;width:0;background:#d6a83a;transition:width .2s}
 @media(max-width:520px){.top-actions{align-items:flex-end;flex-direction:column;gap:7px}.update-button{padding:7px 9px}.updates-panel{padding:16px}}
+/* Painel isolado para validar a saída nativa Oboe sem alterar o transporte principal. */
+.oboe-test{margin-top:20px;padding:16px;border:1px solid #514225;border-radius:9px;background:#101113}
+.oboe-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.oboe-title .eyebrow{margin-bottom:5px}
+.oboe-title h3{margin:0;font-size:17px}
+.experimental-tag{font-size:9px;letter-spacing:.12em;color:#d6a83a;border:1px solid #705725;border-radius:20px;padding:5px 8px}
+.oboe-description,.oboe-status{font-size:11px;line-height:1.5;color:var(--muted)}
+.oboe-actions{display:flex;gap:8px;flex-wrap:wrap}
+.oboe-actions button{flex:1;min-width:130px}
+.oboe-status{margin:12px 0 0;color:#d8c18a;min-height:17px}
