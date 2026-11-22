@@ -3,10 +3,12 @@
 ## Fase 1 — fundação
 - [x] Projeto Android, WebView local e identidade visual inicial.
 - [x] Importação SAF e transporte básico com MediaPlayer.
+- [x] Dependência Oboe 1.11.0 integrada via Prefab/CMake.
+- [x] Fronteira JNI para abrir/fechar stream Oboe experimental.
+- [ ] Alimentar callback Oboe com PCM decodificado (ring buffer).
 - [ ] Waveform real, timeline de edição, zoom, seleção e marcadores.
 - [ ] Persistência de projetos e recuperação de sessão.
-- [ ] Motor C++/Oboe/AAudio e validação de latência.
-- [ ] Testes instrumentados e validação em dispositivos.
+- [ ] Testes instrumentados e validação de latência em dispositivos.
 
 ## Fase 2 — edição temporal
 Time Stretch, Pitch Shift, LiveScrub, loop A-B e edição não destrutiva.

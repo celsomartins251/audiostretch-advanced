@@ -1,9 +1,15 @@
 package br.com.celsomartins.audiostretch
 
 /**
- * Stable boundary reserved for the native DSP engine.
- * The current playback path is Android MediaPlayer; native DSP is not yet integrated.
+ * Native Oboe boundary. Not connected to the app transport yet.
+ * The existing MediaPlayer path remains the active playback implementation.
  */
 object AudioNative {
-    const val STATUS = "DSP engine integration pending"
+    init {
+        System.loadLibrary("audiostretch_native")
+    }
+
+    external fun nativeOpen(): Boolean
+    external fun nativeClose()
+    external fun nativeStatus(): String
 }
