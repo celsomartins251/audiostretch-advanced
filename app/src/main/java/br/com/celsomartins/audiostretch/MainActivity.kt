@@ -143,7 +143,7 @@ class MainActivity : ComponentActivity() {
                 decoder.configure(audioFormat, null, null, 0)
                 decoder.start()
 
-                val peaks = FloatArray(1600)
+                val peaks = FloatArray(2400)
                 var sampleRate = audioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 var channels = audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
@@ -184,7 +184,9 @@ class MainActivity : ComponentActivity() {
                                 output.limit(info.offset + info.size)
                                 output.order(ByteOrder.nativeOrder())
                                 val bytesPerSample = when (pcmEncoding) {
-                                    AudioFormat.ENCODING_PCM_FLOAT -> 4
+                                    AudioFormat.ENCODING_PCM_FLOAT,
+                                    AudioFormat.ENCODING_PCM_32BIT -> 4
+                                    AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
                                     AudioFormat.ENCODING_PCM_8BIT -> 1
                                     else -> 2
                                 }
@@ -196,6 +198,13 @@ class MainActivity : ComponentActivity() {
                                     repeat(channels) { channel ->
                                         val sample = when (pcmEncoding) {
                                             AudioFormat.ENCODING_PCM_FLOAT -> output.getFloat()
+                                            AudioFormat.ENCODING_PCM_32BIT -> output.getInt() / 2147483648f
+                                            AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
+                                                val b0 = output.get().toInt() and 0xff
+                                                val b1 = output.get().toInt() and 0xff
+                                                val b2 = output.get().toInt()
+                                                ((b2 shl 16) or (b1 shl 8) or b0) / 8388608f
+                                            }
                                             AudioFormat.ENCODING_PCM_8BIT -> ((output.get().toInt() and 0xff) - 128) / 128f
                                             else -> output.getShort() / 32768f
                                         }
