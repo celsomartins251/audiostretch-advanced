@@ -10,7 +10,7 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="mark">A</span><div><strong>AudioStretch</strong><small>ADVANCED</small></div></div>
-    <span class="phase">FASE 1 · EDIÇÃO TEMPORAL</span>
+    <div class="top-actions"><span class="phase">FASE 1 · EDIÇÃO TEMPORAL</span><button id="updatesBtn" class="update-button">↻ Atualizações</button></div>
   </header>
   <main>
     <section class="welcome">
@@ -44,6 +44,13 @@
       </div>
       <div class="marker-head"><span class="eyebrow">MARCADORES</span><button id="addMarker" class="text-button">＋ Adicionar no ponto atual</button></div>
       <div id="markers" class="markers"><span class="empty-markers">Nenhum marcador salvo.</span></div>
+    </section>
+    <section class="updates-panel">
+      <div class="section-head compact"><div><p class="eyebrow">SISTEMA</p><h2>Atualizações do aplicativo</h2></div><span class="status">CANAL BETA</span></div>
+      <p id="updateStatus" class="muted">Verifique se existe uma nova versão disponível.</p>
+      <div id="updateDetails" class="update-details" hidden></div>
+      <div class="update-actions"><button id="checkUpdatesBtn" class="tool gold-outline">Verificar atualização agora</button><button id="downloadUpdateBtn" class="primary" hidden>Baixar e instalar</button></div>
+      <div id="updateProgress" class="update-progress" hidden><div id="updateProgressBar"></div></div>
     </section>
     <section class="future"><p class="eyebrow">PRÓXIMAS TECNOLOGIAS</p><div class="chips"><span>Time Stretch</span><span>Pitch Shift</span><span>Separação de stems</span><span>Partituras</span><span>Mixer multipista</span></div></section>
     <p id="error" class="error" role="alert"></p>
