@@ -63,6 +63,32 @@
   el("pauseBtn").addEventListener("click", () => api()?.pause());
   el("stopBtn").addEventListener("click", () => api()?.stop());
   el("volume").addEventListener("input", e => api()?.setVolume(Number(e.target.value)));
+  el("testOboeBtn").addEventListener("click", () => {
+    if (!api()?.testOboe) {
+      el("oboeStatus").textContent = "Teste nativo disponível somente no APK Android.";
+      return;
+    }
+    el("testOboeBtn").disabled = true;
+    el("stopOboeBtn").disabled = false;
+    el("oboeStatus").textContent = "Preparando saída Oboe e decodificando áudio…";
+    api().testOboe();
+  });
+  el("stopOboeBtn").addEventListener("click", () => {
+    api()?.stopOboeTest?.();
+    el("oboeStatus").textContent = "Solicitando interrupção do teste…";
+  });
+  window.onOboeState = message => {
+    el("oboeStatus").textContent = String(message || "");
+    const state = String(message || "");
+    const finished = /concluído|interrompido|falha|não foi possível|importe um áudio|já está em execução/i.test(state);
+    if (finished) {
+      el("testOboeBtn").disabled = false;
+      el("stopOboeBtn").disabled = true;
+    } else {
+      el("testOboeBtn").disabled = true;
+      el("stopOboeBtn").disabled = false;
+    }
+  };
   el("seek").addEventListener("input", e => { seeking = true; el("currentTime").textContent = time(duration * Number(e.target.value) / 1000); });
   el("seek").addEventListener("change", e => { if (duration) api()?.seekTo(Math.round(duration * Number(e.target.value) / 1000)); seeking = false; });
   el("zoom").addEventListener("input", e => { zoom = Number(e.target.value); el("zoomValue").textContent = zoom + "×"; draw(); });
