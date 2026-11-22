@@ -8,6 +8,9 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import androidx.webkit.WebViewAssetLoader
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 
@@ -15,6 +18,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private var player: MediaPlayer? = null
     private var currentUri: Uri? = null
+    private lateinit var assetLoader: WebViewAssetLoader
 
     private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -34,10 +38,17 @@ class MainActivity : ComponentActivity() {
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
         webView.settings.javaScriptCanOpenWindowsAutomatically = false
-        webView.webViewClient = WebViewClient()
+        assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                return assetLoader.shouldInterceptRequest(request.url)
+            }
+        }
         webView.webChromeClient = WebChromeClient()
         webView.addJavascriptInterface(AudioBridge(), "AudioBridge")
-        webView.loadUrl("file:///android_asset/www/index.html")
+        webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
     private fun loadAudio(uri: Uri) {
