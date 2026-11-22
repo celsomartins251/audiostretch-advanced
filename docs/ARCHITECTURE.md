@@ -5,9 +5,10 @@
 - WebView local: interface HTML/CSS/JS sem dependência de CDN.
 - Transporte ativo: Android MediaPlayer para formatos suportados pelo decoder do dispositivo.
 - C++/JNI: fronteira nativa com Oboe 1.11.0 integrada via Prefab/CMake.
-- Oboe: stream de saída Float32 estéreo em baixa latência.
-- PCM ring buffer: fila SPSC pré-alocada; produtor fora da thread de áudio e consumidor no callback Oboe. O callback não usa locks, JNI nem aloca memória; em underrun, completa o bloco com silêncio.
-- Contrato PCM atual: Float32 intercalado estéreo, na taxa de amostragem do stream de saída. A conversão/downmix/upmix e a adaptação de sample rate pertencem ao próximo estágio do decoder.
+- Oboe: stream de saída Float32 estéreo em baixa latência; a taxa real é consultada no stream aberto.
+- PCM ring buffer: fila SPSC pré-alocada; produtor fora da thread de áudio e consumidor no callback. O callback não usa locks, JNI nem aloca memória; em underrun, completa o bloco com silêncio.
+- Controles nativos isolados: pause/resume e limpeza do buffer somente com stream pausado (ou fechado). O proprietário do produtor deve interrompê-lo antes de limpar a fila.
+- Contrato PCM: Float32 intercalado estéreo, na taxa de amostragem real do stream. Conversão/downmix/upmix e adaptação de sample rate pertencem ao estágio do decoder.
 - DSP futuro: processamento temporal e pitch shift em tempo real, isolado da UI, rede e I/O.
 
 ## Tempo
@@ -20,4 +21,4 @@ A WebView carrega assets locais. Acesso genérico a arquivos e conteúdo está d
 A interface não depende de CDN. Room, gerenciamento de projetos e waveform calculada ainda serão implementados. O acesso ao áudio usa URI concedida pelo seletor do Android.
 
 ## Migração do transporte
-O MediaPlayer permanece ativo e não é substituído nesta etapa. O ring buffer e a entrada PCM nativa são uma fundação isolada; o decoder Kotlin ainda não alimenta o buffer. A integração só poderá assumir a reprodução após validação de conversão, sincronização, seek, pause, fim de stream e estabilidade em dispositivo real.
+O MediaPlayer permanece ativo e não é substituído nesta etapa. O decoder Kotlin ainda não alimenta o buffer. A integração só poderá assumir a reprodução após validação de conversão, sincronização, seek, pause, fim de stream e estabilidade em dispositivo real.
