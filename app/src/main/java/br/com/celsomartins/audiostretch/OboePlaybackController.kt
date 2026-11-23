@@ -91,6 +91,13 @@ internal class OboePlaybackController(
         cancelled.set(true)
     }
 
+    /** Worker-thread wait used before another controller opens the shared native stream. */
+    fun awaitStopped() {
+        while (running.get()) Thread.sleep(5)
+    }
+
+    fun isRunning(): Boolean = running.get()
+
     override fun close() {
         cancelled.set(true)
         worker.shutdownNow()
