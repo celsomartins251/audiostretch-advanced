@@ -2,6 +2,8 @@
   const el = id => document.getElementById(id);
   let duration = 0, seeking = false, peaks = [], zoom = 1, pointA = null, pointB = null;
   let loopEnabled = false, lastLoopSeek = 0, markers = [], markerKey = "";
+  let scrubActive = false, scrubPositionMs = 0, scrubLastPositionMs = 0;
+  let scrubLastTime = 0, scrubLastMoveAt = 0, scrubHolding = false, ignoreNextWaveClick = false;
   const api = () => window.AudioBridge || null;
   const time = ms => {
     const sec = Math.max(0, Math.floor(ms / 1000));
@@ -167,12 +169,64 @@
   el("seek").addEventListener("input", e => { seeking = true; el("currentTime").textContent = time(duration * Number(e.target.value) / 1000); });
   el("seek").addEventListener("change", e => { if (duration) api()?.seekTo(Math.round(duration * Number(e.target.value) / 1000)); seeking = false; });
   el("zoom").addEventListener("input", e => { zoom = Number(e.target.value); el("zoomValue").textContent = zoom + "×"; draw(); });
-  el("waveform").addEventListener("click", e => {
-    if (!duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    api()?.seekTo(Math.round(Math.max(0, Math.min(1, x / e.currentTarget.clientWidth)) * duration));
+  const waveformPositionAt = clientX => {
+    const canvas = el("waveform");
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    return Math.max(0, Math.min(duration, x / Math.max(1, canvas.clientWidth) * duration));
+  };
+  const finishScrub = () => {
+    if (!scrubActive) return;
+    scrubActive = false;
+    scrubHolding = false;
+    api()?.endScrub?.(Math.round(scrubPositionMs));
+    ignoreNextWaveClick = true;
+    window.setTimeout(() => { ignoreNextWaveClick = false; }, 180);
+  };
+  el("waveform").addEventListener("pointerdown", e => {
+    if (!duration || e.button !== 0 || scrubActive) return;
+    const position = waveformPositionAt(e.clientX);
+    if (!api()?.beginScrub?.(position)) return;
+    e.preventDefault();
+    scrubActive = true;
+    scrubPositionMs = scrubLastPositionMs = position;
+    scrubLastTime = scrubLastMoveAt = performance.now();
+    scrubHolding = true;
+    el("waveform").setPointerCapture(e.pointerId);
+    api()?.updateScrub?.(position, 0, true);
+    updatePlayhead(position);
+    el("currentTime").textContent = time(position);
+    el("status").textContent = "SCRUBBING";
   });
+  el("waveform").addEventListener("pointermove", e => {
+    if (!scrubActive) return;
+    e.preventDefault();
+    const now = performance.now();
+    const position = waveformPositionAt(e.clientX);
+    const elapsed = Math.max(1, now - scrubLastTime);
+    const speed = Math.max(-4, Math.min(4, (position - scrubLastPositionMs) / elapsed));
+    scrubPositionMs = position;
+    scrubLastPositionMs = position;
+    scrubLastTime = scrubLastMoveAt = now;
+    scrubHolding = false;
+    api()?.updateScrub?.(position, speed, false);
+    updatePlayhead(position);
+    keepPlayheadVisible(position);
+    el("currentTime").textContent = time(position);
+    el("seek").value = String(Math.min(1000, position / duration * 1000));
+    el("status").textContent = "SCRUBBING";
+  });
+  el("waveform").addEventListener("pointerup", finishScrub);
+  el("waveform").addEventListener("pointercancel", finishScrub);
+  el("waveform").addEventListener("lostpointercapture", finishScrub);
+  el("waveform").addEventListener("click", e => {
+    if (ignoreNextWaveClick || scrubActive || !duration) return;
+    const position = waveformPositionAt(e.clientX);
+    api()?.seekTo(Math.round(position));
+  });
+  window.onScrubState = message => {
+    el("oboeStatus").textContent = String(message || "");
+  };
   el("setA").addEventListener("click", () => { pointA = currentPosition(); pointB = null; loopEnabled = false; updateSelection(); });
   el("setB").addEventListener("click", () => {
     const pos = currentPosition();
@@ -209,10 +263,14 @@
   window.addEventListener("resize", draw);
   window.setInterval(() => {
     const native = api(); if (!native || !native.hasAudio()) return;
-    const position = native.getPosition();
+    if (scrubActive && !scrubHolding && performance.now() - scrubLastMoveAt > 90) {
+      scrubHolding = true;
+      api()?.updateScrub?.(scrubPositionMs, 0, true);
+    }
+    const position = scrubActive ? scrubPositionMs : native.getPosition();
     if (!seeking) { el("currentTime").textContent = time(position); el("seek").value = duration ? String(Math.min(1000, position / duration * 1000)) : "0"; }
-    const playing = native.isPlaying();
-    el("status").textContent = playing ? "REPRODUZINDO" : "PRONTO";
+    const playing = scrubActive || native.isPlaying();
+    el("status").textContent = scrubActive ? "SCRUBBING" : (playing ? "REPRODUZINDO" : "PRONTO");
     updatePlayhead(position);
     if (playing) keepPlayheadVisible(position);
     if (loopEnabled && pointA !== null && pointB !== null && position >= pointB && position - lastLoopSeek > 80) {
