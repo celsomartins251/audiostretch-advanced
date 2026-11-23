@@ -94,12 +94,11 @@ internal class ScrubPcmRenderer(
                 val fade = ((loopPosition - (loopFrames - crossfadeFrames)) /
                     crossfadeFrames).toFloat().coerceIn(0f, 1f)
                 val headPosition = loopPosition - (loopFrames - crossfadeFrames)
-                val head = FloatArray(CHANNELS)
-                interpolate(source, headPosition, head, 0)
                 val base = frame * CHANNELS
                 for (channel in 0 until CHANNELS) {
+                    val head = sampleAt(source, headPosition, channel)
                     result[base + channel] =
-                        result[base + channel] * (1f - fade) + head[channel] * fade
+                        result[base + channel] * (1f - fade) + head * fade
                 }
             }
         }
@@ -107,19 +106,22 @@ internal class ScrubPcmRenderer(
     }
 
     private fun interpolate(source: FloatArray, framePosition: Double, destination: FloatArray, outputFrame: Int) {
+        val out = outputFrame * CHANNELS
+        for (channel in 0 until CHANNELS) {
+            destination[out + channel] = sampleAt(source, framePosition, channel)
+        }
+    }
+
+    private fun sampleAt(source: FloatArray, framePosition: Double, channel: Int): Float {
         val sourceFrames = source.size / CHANNELS
-        if (sourceFrames == 0) return
+        if (sourceFrames == 0) return 0f
         val bounded = framePosition.coerceIn(0.0, (sourceFrames - 1).toDouble())
         val first = floor(bounded).toInt()
         val second = min(first + 1, sourceFrames - 1)
         val fraction = (bounded - first).toFloat()
-        val out = outputFrame * CHANNELS
-        val a = first * CHANNELS
-        val b = second * CHANNELS
-        for (channel in 0 until CHANNELS) {
-            destination[out + channel] =
-                source[a + channel] + (source[b + channel] - source[a + channel]) * fraction
-        }
+        val a = source[first * CHANNELS + channel]
+        val b = source[second * CHANNELS + channel]
+        return a + (b - a) * fraction
     }
 
     companion object {
