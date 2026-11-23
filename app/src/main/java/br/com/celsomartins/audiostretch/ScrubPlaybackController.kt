@@ -32,6 +32,10 @@ internal class ScrubPlaybackController(
     private val running = AtomicBoolean(false)
     private val version = AtomicLong(0L)
     private val command = AtomicReference(Command(0.0, 0.0, true, 0L))
+    private val cacheLock = Any()
+    private var cachedUri: Uri? = null
+    private var cachedPcm: PcmFileCache? = null
+    private var invalidateWhenStopped = false
 
     fun start(uri: Uri, initialPositionMs: Double): Boolean {
         if (!running.compareAndSet(false, true)) return false
@@ -51,12 +55,22 @@ internal class ScrubPlaybackController(
                 val rate = AudioNative.nativeSampleRate()
                 check(rate in 8_000..192_000) { "Taxa de saída Oboe inválida." }
 
-                val builtCache = PcmFileCache.build(
+                val reusableCache = synchronized(cacheLock) {
+                    cachedPcm?.takeIf { cachedUri == uri && it.sampleRate == rate }
+                }
+                val builtCache = reusableCache ?: PcmFileCache.build(
                     context = appContext,
                     uri = uri,
                     outputSampleRate = rate,
                     shouldCancel = { cancelled.get() }
-                )
+                ).also { newCache ->
+                    synchronized(cacheLock) {
+                        val previous = cachedPcm
+                        cachedPcm = newCache
+                        cachedUri = uri
+                        if (previous !== newCache) previous?.close()
+                    }
+                }
                 cache = builtCache
                 check(!cancelled.get()) { "Scrubbing cancelado." }
                 val renderer = ScrubPcmRenderer(builtCache)
@@ -110,9 +124,16 @@ internal class ScrubPlaybackController(
                 if (!cancelled.get()) onState(error.message ?: "Falha no scrubbing.")
             } finally {
                 if (opened) AudioNative.nativeClose()
-                cache?.close()
-                running.set(false)
-                if (cancelled.get()) onState("Scrubbing finalizado.")
+                synchronized(cacheLock) {
+                    if (invalidateWhenStopped) {
+                        cachedPcm?.close()
+                        cachedPcm = null
+                        cachedUri = null
+                        invalidateWhenStopped = false
+                    }
+                    running.set(false)
+                }
+                if (cancelled.get()) onState("Scrubbing finalizado · ${AudioNative.nativeStatus()}")
             }
         }
         return true
@@ -138,9 +159,32 @@ internal class ScrubPlaybackController(
 
     fun isRunning(): Boolean = running.get()
 
+    /** Drops the previous file's PCM cache after its active worker has stopped. */
+    fun invalidateCache() {
+        synchronized(cacheLock) {
+            if (running.get()) {
+                invalidateWhenStopped = true
+            } else {
+                cachedPcm?.close()
+                cachedPcm = null
+                cachedUri = null
+                invalidateWhenStopped = false
+            }
+        }
+    }
+
     override fun close() {
         cancelled.set(true)
         worker.shutdownNow()
+        synchronized(cacheLock) {
+            if (running.get()) {
+                invalidateWhenStopped = true
+            } else {
+                cachedPcm?.close()
+                cachedPcm = null
+                cachedUri = null
+            }
+        }
     }
 
     companion object {
