@@ -256,9 +256,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOboeTest() {
-        if (scrubController?.isRunning() == true) {
-            scrubController?.stop()
-            updateMessage("onOboeState", "Encerrando o scrubbing. Toque em testar novamente em instantes.")
+        if (scrubController?.isBusy() == true) {
+            if (scrubController?.isRunning() == true) scrubController?.stop()
+            updateMessage("onOboeState", "Preparação ou scrubbing em andamento. Aguarde e tente novamente.")
             return
         }
         val uri = currentUri
