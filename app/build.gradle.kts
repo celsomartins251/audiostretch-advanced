@@ -5,6 +5,9 @@ plugins {
 android {
     namespace = "br.com.celsomartins.audiostretch"
     compileSdk = 35
+    buildFeatures {
+        prefab = true
+    }
     signingConfigs {
         create("persistent") {
             val keystorePath = System.getenv("AUDIOSTRETCH_KEYSTORE_PATH")
@@ -23,7 +26,12 @@ android {
         versionCode = providers.gradleProperty("ciVersionCode").orNull?.toInt() ?: 1
         versionName = providers.gradleProperty("ciVersionName").orNull ?: "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a") }
-        externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
     }
     buildTypes {
         debug {
@@ -46,4 +54,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.webkit:webkit:1.12.1")
+    implementation("com.google.oboe:oboe:1.11.0")
 }

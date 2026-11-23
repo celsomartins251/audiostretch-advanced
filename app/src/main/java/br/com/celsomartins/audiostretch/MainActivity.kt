@@ -47,6 +47,8 @@ class MainActivity : ComponentActivity() {
     @Volatile private var pendingUpdateFile: File? = null
     private val decodeToken = AtomicInteger(0)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var oboeController: OboePlaybackController? = null
+    @Volatile private var outputVolume = 1.0f
 
     private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -76,10 +78,19 @@ class MainActivity : ComponentActivity() {
         }
         webView.webChromeClient = WebChromeClient()
         webView.addJavascriptInterface(AudioBridge(), "AudioBridge")
+        oboeController = OboePlaybackController(this) { message ->
+            mainHandler.post {
+                if (::webView.isInitialized) {
+                    val safe = JSONObject.quote(message)
+                    webView.evaluateJavascript("window.onOboeState && window.onOboeState($safe)", null)
+                }
+            }
+        }
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
     private fun loadAudio(uri: Uri) {
+        oboeController?.stop()
         decodeToken.incrementAndGet()
         releasePlayer()
         try {
@@ -132,7 +143,7 @@ class MainActivity : ComponentActivity() {
                 decoder.configure(audioFormat, null, null, 0)
                 decoder.start()
 
-                val peaks = FloatArray(1600)
+                val peaks = FloatArray(2400)
                 var sampleRate = audioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 var channels = audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
@@ -173,7 +184,9 @@ class MainActivity : ComponentActivity() {
                                 output.limit(info.offset + info.size)
                                 output.order(ByteOrder.nativeOrder())
                                 val bytesPerSample = when (pcmEncoding) {
-                                    AudioFormat.ENCODING_PCM_FLOAT -> 4
+                                    AudioFormat.ENCODING_PCM_FLOAT,
+                                    AudioFormat.ENCODING_PCM_32BIT -> 4
+                                    AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
                                     AudioFormat.ENCODING_PCM_8BIT -> 1
                                     else -> 2
                                 }
@@ -185,6 +198,13 @@ class MainActivity : ComponentActivity() {
                                     repeat(channels) { channel ->
                                         val sample = when (pcmEncoding) {
                                             AudioFormat.ENCODING_PCM_FLOAT -> output.getFloat()
+                                            AudioFormat.ENCODING_PCM_32BIT -> output.getInt() / 2147483648f
+                                            AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
+                                                val b0 = output.get().toInt() and 0xff
+                                                val b1 = output.get().toInt() and 0xff
+                                                val b2 = output.get().toInt()
+                                                ((b2 shl 16) or (b1 shl 8) or b0) / 8388608f
+                                            }
                                             AudioFormat.ENCODING_PCM_8BIT -> ((output.get().toInt() and 0xff) - 128) / 128f
                                             else -> output.getShort() / 32768f
                                         }
@@ -224,6 +244,24 @@ class MainActivity : ComponentActivity() {
                 try { extractor?.release() } catch (_: Exception) { }
             }
         }
+    }
+
+    private fun startOboeTest() {
+        val uri = currentUri
+        if (uri == null) {
+            updateMessage("onOboeState", "Importe um áudio antes de iniciar o teste Oboe.")
+            return
+        }
+        player?.let { if (it.isPlaying) it.pause() }
+        AudioNative.nativeSetGain(outputVolume)
+        val started = oboeController?.start(uri) ?: false
+        if (!started) {
+            updateMessage("onOboeState", "O teste Oboe já está em execução. Aguarde ou interrompa-o.")
+        }
+    }
+
+    private fun stopOboeTest() {
+        oboeController?.stop()
     }
 
     private fun notifyError(message: String) {
@@ -327,6 +365,8 @@ class MainActivity : ComponentActivity() {
         decodeToken.incrementAndGet()
         decodeExecutor.shutdownNow()
         updateExecutor.shutdownNow()
+        oboeController?.close()
+        oboeController = null
         releasePlayer()
         webView.removeJavascriptInterface("AudioBridge")
         webView.destroy()
@@ -335,6 +375,8 @@ class MainActivity : ComponentActivity() {
 
     inner class AudioBridge {
         @JavascriptInterface fun importAudio() { runOnUiThread { audioPicker.launch(arrayOf("audio/*")) } }
+        @JavascriptInterface fun testOboe() { runOnUiThread { startOboeTest() } }
+        @JavascriptInterface fun stopOboeTest() { runOnUiThread { this@MainActivity.stopOboeTest() } }
         @JavascriptInterface fun checkForUpdates() { this@MainActivity.checkForUpdates() }
         @JavascriptInterface fun downloadUpdate(url: String, digest: String) { this@MainActivity.downloadUpdate(url, digest.takeIf { it.isNotBlank() && it != "null" }) }
         @JavascriptInterface fun play() { runOnUiThread { player?.let { if (!it.isPlaying) it.start() } } }
@@ -350,7 +392,11 @@ class MainActivity : ComponentActivity() {
         }
         @JavascriptInterface fun setVolume(value: Float) {
             val volume = value.coerceIn(0f, 1f)
-            runOnUiThread { player?.setVolume(volume, volume) }
+            outputVolume = volume
+            runOnUiThread {
+                player?.setVolume(volume, volume)
+                AudioNative.nativeSetGain(volume)
+            }
         }
         @JavascriptInterface fun getPosition(): Int = player?.currentPosition ?: 0
         @JavascriptInterface fun getDuration(): Int = player?.duration ?: 0
