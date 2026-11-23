@@ -16,7 +16,8 @@ import java.util.concurrent.atomic.AtomicReference
  */
 internal class ScrubPlaybackController(
     context: Context,
-    private val onState: (String) -> Unit
+    private val onState: (String) -> Unit,
+    private val waitForPrevious: () -> Unit = {}
 ) : AutoCloseable {
     private data class Command(
         val positionMs: Double,
@@ -41,6 +42,8 @@ internal class ScrubPlaybackController(
             var cache: PcmFileCache? = null
             try {
                 onState("Preparando áudio para o scrubbing…")
+                waitForPrevious()
+                if (cancelled.get()) return@execute
                 if (!AudioNative.nativeOpen()) {
                     error("Não foi possível abrir a saída Oboe para o scrubbing.")
                 }
