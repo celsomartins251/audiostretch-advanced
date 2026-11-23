@@ -23,6 +23,7 @@ internal class PcmFileCache private constructor(
     val totalFrames: Long
 ) : Closeable {
     private val bytesPerFrame = 2L * Float.SIZE_BYTES
+    private val input = RandomAccessFile(file, "r")
     private var closed = false
 
     init {
@@ -48,10 +49,8 @@ internal class PcmFileCache private constructor(
         val sampleCount = available * 2
         val byteCount = sampleCount * Float.SIZE_BYTES
         val buffer = ByteBuffer.allocate(byteCount).order(ByteOrder.LITTLE_ENDIAN)
-        RandomAccessFile(file, "r").use { input ->
-            input.seek(startFrame * bytesPerFrame)
-            input.readFully(buffer.array())
-        }
+        input.seek(startFrame * bytesPerFrame)
+        input.readFully(buffer.array())
         buffer.position(0)
         val floats = FloatArray(sampleCount)
         buffer.asFloatBuffer().get(floats)
@@ -62,6 +61,7 @@ internal class PcmFileCache private constructor(
         synchronized(this) {
             if (closed) return
             closed = true
+            try { input.close() } catch (_: Exception) { }
             if (file.exists()) file.delete()
         }
     }
