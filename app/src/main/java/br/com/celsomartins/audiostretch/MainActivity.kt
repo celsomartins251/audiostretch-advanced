@@ -87,9 +87,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        scrubController = ScrubPlaybackController(this) { message ->
-            updateMessage("onScrubState", message)
-        }
+        scrubController = ScrubPlaybackController(
+            context = this,
+            onState = { message -> updateMessage("onScrubState", message) },
+            waitForPrevious = { oboeController?.awaitStopped() }
+        )
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
