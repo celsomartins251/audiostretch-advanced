@@ -21,6 +21,10 @@ internal class ScrubPcmRenderer(
         val nextHoldPhaseFrame: Long
     )
 
+    private var cachedHoldStartFrame = -1L
+    private var cachedHoldFrames = 0
+    private var cachedHoldSamples = FloatArray(0)
+
     init {
         require(holdLoopMs in 60..500) { "Duração do loop de sustentação inválida." }
         require(crossfadeMs in 2..40 && crossfadeMs * 2 < holdLoopMs) {
@@ -84,7 +88,12 @@ internal class ScrubPcmRenderer(
         val center = position.toLong()
         val start = (center - loopFrames / 2L)
             .coerceIn(0L, (cache.totalFrames - loopFrames).coerceAtLeast(0L))
-        val source = cache.readFrames(start, loopFrames)
+        if (cachedHoldStartFrame != start || cachedHoldFrames != loopFrames) {
+            cachedHoldSamples = cache.readFrames(start, loopFrames)
+            cachedHoldStartFrame = start
+            cachedHoldFrames = loopFrames
+        }
+        val source = cachedHoldSamples
         val result = FloatArray(outputFrames * CHANNELS)
 
         for (frame in 0 until outputFrames) {
