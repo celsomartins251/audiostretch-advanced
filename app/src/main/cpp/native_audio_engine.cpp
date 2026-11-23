@@ -90,7 +90,12 @@ public:
     bool pause() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!stream_) return false;
-        const auto state = stream_->getState();
+        auto state = stream_->getState();
+        if (state == oboe::StreamState::Starting) {
+            const auto waitResult = stream_->waitForStateChange(
+                oboe::StreamState::Starting, &state, kStateTimeoutNs);
+            if (waitResult != oboe::Result::OK) return false;
+        }
         if (state == oboe::StreamState::Paused) return true;
         if (state != oboe::StreamState::Started) return false;
         if (stream_->requestPause() != oboe::Result::OK) return false;
