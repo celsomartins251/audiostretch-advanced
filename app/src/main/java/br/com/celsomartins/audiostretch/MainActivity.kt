@@ -254,7 +254,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOboeTest() {
-        scrubController?.stop()
+        if (scrubController?.isRunning() == true) {
+            scrubController?.stop()
+            updateMessage("onOboeState", "Encerrando o scrubbing. Toque em testar novamente em instantes.")
+            return
+        }
         val uri = currentUri
         if (uri == null) {
             updateMessage("onOboeState", "Importe um áudio antes de iniciar o teste Oboe.")
