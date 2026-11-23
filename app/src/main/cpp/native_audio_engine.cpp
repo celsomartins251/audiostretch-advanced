@@ -38,6 +38,12 @@ public:
         head_.store(0, std::memory_order_relaxed);
         tail_.store(0, std::memory_order_relaxed);
     }
+    // Called only by the audio callback: the consumer remains the sole writer
+    // of tail_, so a producer-requested flush cannot move the read cursor backward.
+    void discardQueuedFromConsumer() {
+        const uint64_t head = head_.load(std::memory_order_acquire);
+        tail_.store(head, std::memory_order_release);
+    }
     uint64_t queuedSamples() const {
         return head_.load(std::memory_order_acquire) - tail_.load(std::memory_order_acquire);
     }
@@ -118,9 +124,20 @@ public:
     }
     uint64_t queuedSamples() const { return ring_.queuedSamples(); }
     uint64_t underruns() const { return underruns_.load(std::memory_order_relaxed); }
+    uint64_t requestFlush() {
+        return flushRequested_.fetch_add(1, std::memory_order_acq_rel) + 1;
+    }
+    bool isFlushComplete(uint64_t token) const {
+        return flushAcknowledged_.load(std::memory_order_acquire) >= token;
+    }
     void setGain(float gain) { gain_.store(std::clamp(gain, 0.0f, 1.0f) * 1.10f, std::memory_order_relaxed); }
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream*, void* audioData, int32_t frames) override {
         auto* output = static_cast<float*>(audioData);
+        const uint64_t flushToken = flushRequested_.load(std::memory_order_acquire);
+        if (flushToken != flushAcknowledged_.load(std::memory_order_relaxed)) {
+            ring_.discardQueuedFromConsumer();
+            flushAcknowledged_.store(flushToken, std::memory_order_release);
+        }
         const int32_t requested = frames * 2;
         const int32_t copied = ring_.read(output, requested);
         const float gain = gain_.load(std::memory_order_relaxed);
@@ -143,6 +160,8 @@ private:
     std::shared_ptr<oboe::AudioStream> stream_;
     PcmRingBuffer ring_;
     std::atomic<uint64_t> underruns_{0};
+    std::atomic<uint64_t> flushRequested_{0};
+    std::atomic<uint64_t> flushAcknowledged_{0};
     std::atomic<float> gain_{1.0f};
 };
 NativeAudioEngine gEngine;
@@ -203,4 +222,13 @@ Java_br_com_celsomartins_audiostretch_AudioNative_nativeStatus(JNIEnv* env, jobj
         static_cast<unsigned long long>(gEngine.queuedSamples()),
         static_cast<unsigned long long>(gEngine.underruns()));
     return env->NewStringUTF(status);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_br_com_celsomartins_audiostretch_AudioNative_nativeRequestFlush(JNIEnv*, jobject) {
+    return static_cast<jlong>(gEngine.requestFlush());
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_br_com_celsomartins_audiostretch_AudioNative_nativeIsFlushComplete(JNIEnv*, jobject, jlong token) {
+    return gEngine.isFlushComplete(static_cast<uint64_t>(token)) ? JNI_TRUE : JNI_FALSE;
 }
