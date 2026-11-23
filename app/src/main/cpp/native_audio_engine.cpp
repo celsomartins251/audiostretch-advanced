@@ -118,7 +118,7 @@ public:
     }
     uint64_t queuedSamples() const { return ring_.queuedSamples(); }
     uint64_t underruns() const { return underruns_.load(std::memory_order_relaxed); }
-    void setGain(float gain) { gain_.store(std::clamp(gain, 0.0f, 1.0f) * 1.05f, std::memory_order_relaxed); }
+    void setGain(float gain) { gain_.store(std::clamp(gain, 0.0f, 1.0f) * 1.10f, std::memory_order_relaxed); }
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream*, void* audioData, int32_t frames) override {
         auto* output = static_cast<float*>(audioData);
         const int32_t requested = frames * 2;
