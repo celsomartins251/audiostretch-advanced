@@ -290,7 +290,7 @@
   window.addEventListener("resize", draw);
   window.setInterval(() => {
     const native = api(); if (!native || !native.hasAudio()) return;
-    if (scrubActive && !scrubHolding && performance.now() - scrubLastMoveAt > 90) {
+    if (scrubActive && !scrubHolding && performance.now() - scrubLastMoveAt > 50) {
       scrubHolding = true;
       scrubSpeed = 0;
       scrubLastPositionMs = scrubPositionMs;
