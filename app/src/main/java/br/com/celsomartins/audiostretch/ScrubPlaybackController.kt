@@ -51,6 +51,9 @@ internal class ScrubPlaybackController(
                     error("Não foi possível abrir a saída Oboe para o scrubbing.")
                 }
                 opened = true
+                check(AudioNative.nativePause()) {
+                    "Não foi possível pausar a saída Oboe durante a preparação do áudio."
+                }
                 val rate = AudioNative.nativeSampleRate()
                 check(rate in 8_000..192_000) { "Taxa de saída Oboe inválida." }
 
@@ -72,6 +75,12 @@ internal class ScrubPlaybackController(
                 }
                 check(!cancelled.get()) { "Scrubbing cancelado." }
                 val renderer = ScrubPcmRenderer(builtCache)
+                check(AudioNative.nativeClearBuffer()) {
+                    "Não foi possível limpar o buffer Oboe antes do scrubbing."
+                }
+                check(AudioNative.nativeResume()) {
+                    "Não foi possível iniciar a saída Oboe para o scrubbing."
+                }
                 onState("Scrubbing pronto · $rate Hz")
 
                 var positionFrame = 0.0
