@@ -17,7 +17,8 @@ internal class ScrubPcmRenderer(
 ) {
     data class Block(
         val samples: FloatArray,
-        val nextPositionFrame: Double
+        val nextPositionFrame: Double,
+        val nextHoldPhaseFrame: Long
     )
 
     init {
@@ -37,14 +38,15 @@ internal class ScrubPcmRenderer(
         positionFrame: Double,
         speed: Double,
         outputFrames: Int,
-        holdStill: Boolean = false
+        holdStill: Boolean = false,
+        holdPhaseFrame: Long = 0L
     ): Block {
         require(outputFrames in 1..MAX_OUTPUT_FRAMES) { "Bloco de saída muito grande." }
         require(speed.isFinite()) { "Velocidade inválida." }
 
         val safePosition = positionFrame.coerceIn(0.0, max(0.0, cache.totalFrames - 1.0))
         return if (holdStill || kotlin.math.abs(speed) < MIN_SPEED) {
-            renderHold(safePosition, outputFrames)
+            renderHold(safePosition, outputFrames, holdPhaseFrame)
         } else {
             renderMoving(safePosition, speed.coerceIn(-MAX_SPEED, MAX_SPEED), outputFrames)
         }
@@ -65,11 +67,11 @@ internal class ScrubPcmRenderer(
 
         val next = (position + speed * outputFrames)
             .coerceIn(0.0, cache.totalFrames.toDouble())
-        return Block(result, next)
+        return Block(result, next, 0L)
     }
 
-    private fun renderHold(position: Double, outputFrames: Int): Block {
-        if (cache.totalFrames == 0L) return Block(FloatArray(outputFrames * CHANNELS), 0.0)
+    private fun renderHold(position: Double, outputFrames: Int, holdPhaseFrame: Long): Block {
+        if (cache.totalFrames == 0L) return Block(FloatArray(outputFrames * CHANNELS), 0.0, 0L)
 
         val loopFrames = min(
             cache.totalFrames,
@@ -86,7 +88,7 @@ internal class ScrubPcmRenderer(
         val result = FloatArray(outputFrames * CHANNELS)
 
         for (frame in 0 until outputFrames) {
-            val loopPosition = (frame.toLong() % loopFrames).toInt().toDouble()
+            val loopPosition = ((holdPhaseFrame + frame) % loopFrames).toInt().toDouble()
             interpolate(source, loopPosition, result, frame)
 
             // Blend the tail into the beginning so the hold loop has no hard seam.
@@ -102,7 +104,7 @@ internal class ScrubPcmRenderer(
                 }
             }
         }
-        return Block(result, position)
+        return Block(result, position, (holdPhaseFrame + outputFrames) % loopFrames)
     }
 
     private fun interpolate(source: FloatArray, framePosition: Double, destination: FloatArray, outputFrame: Int) {
