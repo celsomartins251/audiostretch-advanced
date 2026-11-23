@@ -43,7 +43,6 @@ internal class ScrubPlaybackController(
         update(initialPositionMs, 0.0, true)
         worker.execute {
             var opened = false
-            var cache: PcmFileCache? = null
             try {
                 onState("Preparando áudio para o scrubbing…")
                 waitForPrevious()
@@ -71,7 +70,6 @@ internal class ScrubPlaybackController(
                         if (previous !== newCache) previous?.close()
                     }
                 }
-                cache = builtCache
                 check(!cancelled.get()) { "Scrubbing cancelado." }
                 val renderer = ScrubPcmRenderer(builtCache)
                 onState("Scrubbing pronto · $rate Hz")
