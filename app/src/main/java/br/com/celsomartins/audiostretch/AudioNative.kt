@@ -1,9 +1,21 @@
 package br.com.celsomartins.audiostretch
 
-/**
- * Stable boundary reserved for the native DSP engine.
- * The current playback path is Android MediaPlayer; native DSP is not yet integrated.
- */
+/** Native Oboe boundary. PCM is Float32 stereo at the stream's actual sample rate. */
 object AudioNative {
-    const val STATUS = "DSP engine integration pending"
+    init { System.loadLibrary("audiostretch_native") }
+    external fun nativeOpen(): Boolean
+    external fun nativeClose()
+    external fun nativePause(): Boolean
+    external fun nativeResume(): Boolean
+    external fun nativeSampleRate(): Int
+    /** Linear output gain in the range 0.0..1.0, applied in the audio callback. */
+    external fun nativeSetGain(gain: Float)
+    /** Clear only while paused or closed; stop the PCM producer before calling. */
+    external fun nativeClearBuffer(): Boolean
+    external fun nativeWritePcm(samples: FloatArray, length: Int): Int
+    external fun nativeQueuedSamples(): Long
+    /** Requests that the audio callback discard queued PCM; wait for the token before refilling. */
+    external fun nativeRequestFlush(): Long
+    external fun nativeIsFlushComplete(token: Long): Boolean
+    external fun nativeStatus(): String
 }

@@ -23,7 +23,7 @@
     <section class="workspace">
       <div class="section-head"><div><p class="eyebrow">TRANSPORTE</p><h2>Reprodução</h2></div><span id="status" class="status">AGUARDANDO ÁUDIO</span></div>
       <div class="wave-panel">
-        <div id="waveScroll" class="wave-scroll"><canvas id="waveform" aria-label="Forma de onda do áudio"></canvas></div>
+        <div id="waveScroll" class="wave-scroll"><canvas id="waveform" aria-label="Forma de onda do áudio"></canvas><div id="playhead" class="playhead" aria-hidden="true"></div></div>
         <div id="waveNote" class="wave-note">A forma de onda será calculada após importar o áudio.</div>
       </div>
       <div class="zoom-row"><label for="zoom">ZOOM DA FORMA DE ONDA</label><input id="zoom" type="range" min="1" max="6" step="0.5" value="1"><span id="zoomValue">1×</span></div>
@@ -33,7 +33,13 @@
         <button id="playBtn" class="play" aria-label="Reproduzir">▶</button>
         <button id="pauseBtn" class="secondary" aria-label="Pausar">Ⅱ</button>
       </div>
-      <div class="volume"><label for="volume">VOLUME</label><input id="volume" type="range" min="0" max="1" step="0.01" value="0.85"></div>
+      <div class="volume"><label for="volume">VOLUME</label><input id="volume" type="range" min="0" max="1" step="0.01" value="1"></div>
+      <section class="oboe-test" aria-label="Teste experimental do motor Oboe">
+        <div class="oboe-title"><div><p class="eyebrow">MOTOR NATIVO</p><h3>Teste Oboe</h3></div><span class="experimental-tag">EXPERIMENTAL</span></div>
+        <p class="oboe-description">Reproduz o áudio importado pelo novo caminho nativo. A reprodução normal permanece no MediaPlayer.</p>
+        <div class="oboe-actions"><button id="testOboeBtn" class="tool gold-outline">▶ Testar motor Oboe</button><button id="stopOboeBtn" class="tool" disabled>■ Parar teste</button></div>
+        <p id="oboeStatus" class="oboe-status" aria-live="polite">Aguardando teste. Importe um áudio para começar.</p>
+      </section>
       <div class="divider"></div>
       <div class="section-head compact"><div><p class="eyebrow">EDIÇÃO</p><h2>Seleção e loop</h2></div><span id="selectionLabel" class="status">SEM SELEÇÃO</span></div>
       <div class="edit-tools">

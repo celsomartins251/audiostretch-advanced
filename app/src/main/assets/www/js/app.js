@@ -2,6 +2,8 @@
   const el = id => document.getElementById(id);
   let duration = 0, seeking = false, peaks = [], zoom = 1, pointA = null, pointB = null;
   let loopEnabled = false, lastLoopSeek = 0, markers = [], markerKey = "";
+  let scrubActive = false, scrubPositionMs = 0, scrubLastPositionMs = 0;
+  let scrubLastTime = 0, scrubLastMoveAt = 0, scrubHolding = false, scrubSpeed = 0, ignoreNextWaveClick = false;
   const api = () => window.AudioBridge || null;
   const time = ms => {
     const sec = Math.max(0, Math.floor(ms / 1000));
@@ -10,34 +12,109 @@
   const currentPosition = () => Number(api()?.getPosition?.() || 0);
   const draw = () => {
     const canvas = el("waveform"), scroller = el("waveScroll");
-    const width = Math.max(1, Math.floor(scroller.clientWidth * zoom)), height = 150;
+    const width = Math.max(1, Math.floor(scroller.clientWidth * zoom)), height = 184;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.style.width = width + "px"; canvas.style.height = height + "px";
+    // Reserva espaço após o áudio para manter o cursor visível perto do fim.
+    canvas.style.marginRight = zoom > 1 ? Math.round(scroller.clientWidth * 0.28) + "px" : "0px";
     canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
-    const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = "#ffffff12"; ctx.lineWidth = 1;
-    for (let x = 0; x < width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
     if (!peaks.length || !duration) return;
+
+    const top = 29, bottom = 163, center = (top + bottom) / 2;
+    const amplitudeScale = (bottom - top) * 0.46;
     const xFor = ms => Math.max(0, Math.min(width, ms / duration * width));
+
+    // Área selecionada fica atrás da forma de onda.
     if (pointA !== null && pointB !== null) {
-      const left = xFor(Math.min(pointA, pointB)), right = xFor(Math.max(pointA, pointB));
-      ctx.fillStyle = "#d6a83a25"; ctx.fillRect(left, 0, Math.max(1, right - left), height);
-      ctx.strokeStyle = "#d6a83a"; ctx.lineWidth = 1;
-      [left, right].forEach(x => { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); });
+      const left = xFor(Math.min(pointA, pointB));
+      const right = xFor(Math.max(pointA, pointB));
+      ctx.fillStyle = "rgba(214,168,58,.11)";
+      ctx.fillRect(left, top - 8, Math.max(1, right - left), bottom - top + 16);
     }
-    ctx.strokeStyle = "#d6a83a"; ctx.lineWidth = Math.max(1, 1.2 * zoom);
-    ctx.beginPath();
-    const center = height / 2, scale = height * .43;
-    peaks.forEach((p, i) => {
-      const x = (i / (peaks.length - 1)) * width;
-      const amp = Math.max(1, p * scale);
-      ctx.moveTo(x, center - amp); ctx.lineTo(x, center + amp);
+
+    // Régua temporal adaptável ao zoom e à duração do arquivo.
+    const totalSeconds = duration / 1000;
+    const pixelsPerSecond = width / Math.max(1, totalSeconds);
+    const intervals = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+    const interval = intervals.find(value => value * pixelsPerSecond >= 82) || 3600;
+    ctx.font = "10px system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 1;
+    for (let second = 0; second <= totalSeconds; second += interval) {
+      const x = second / totalSeconds * width;
+      ctx.strokeStyle = "rgba(220,225,232,.10)";
+      ctx.beginPath(); ctx.moveTo(x, top - 5); ctx.lineTo(x, bottom + 5); ctx.stroke();
+      ctx.fillStyle = "rgba(190,197,207,.72)";
+      ctx.textAlign = second === 0 ? "left" : "center";
+      ctx.fillText(time(second * 1000), second === 0 ? x + 3 : x, 13);
+      ctx.strokeStyle = "rgba(220,225,232,.28)";
+      ctx.beginPath(); ctx.moveTo(x, 23); ctx.lineTo(x, 27); ctx.stroke();
+    }
+
+    // Linhas de referência de amplitude, discretas para não competir com o áudio.
+    ctx.setLineDash([3, 5]);
+    [-0.5, 0, 0.5].forEach(level => {
+      const y = center - level * amplitudeScale;
+      ctx.strokeStyle = level === 0 ? "rgba(232,236,242,.30)" : "rgba(220,225,232,.09)";
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
     });
-    ctx.stroke();
-    const playX = xFor(currentPosition());
-    ctx.strokeStyle = "#f4f0e7"; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(playX, 0); ctx.lineTo(playX, height); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Envelope preenchido, agregado à resolução real do canvas.
+    const waveGradient = ctx.createLinearGradient(0, top, 0, bottom);
+    waveGradient.addColorStop(0, "#f0d58a");
+    waveGradient.addColorStop(.48, "#d6a83a");
+    waveGradient.addColorStop(1, "#8c6726");
+    ctx.fillStyle = waveGradient;
+    for (let x = 0; x < Math.ceil(width); x++) {
+      const first = Math.floor(x / width * peaks.length);
+      const last = Math.max(first + 1, Math.floor((x + 1) / width * peaks.length));
+      let peak = 0;
+      for (let i = first; i < Math.min(last, peaks.length); i++) {
+        if (peaks[i] > peak) peak = peaks[i];
+      }
+      if (peak <= 0.001) continue;
+      const amplitude = Math.max(1, Math.min(amplitudeScale, peak * amplitudeScale));
+      ctx.fillRect(x, center - amplitude, 1.25, amplitude * 2);
+    }
+
+    // Marcadores A e B.
+    const marker = (position, label) => {
+      if (position === null) return;
+      const x = xFor(position);
+      ctx.strokeStyle = "#f0c96b";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x, top - 5); ctx.lineTo(x, bottom + 5); ctx.stroke();
+      ctx.fillStyle = "#f0c96b";
+      ctx.textAlign = x > width - 25 ? "right" : "left";
+      ctx.fillText(label, x + (x > width - 25 ? -4 : 4), bottom + 14);
+    };
+    marker(pointA, "A");
+    marker(pointB, "B");
+
+    // O cursor é renderizado em uma camada independente para evitar redesenhar a onda.
+  };
+  const updatePlayhead = position => {
+    const canvas = el("waveform"), cursor = el("playhead");
+    if (!duration || !canvas.clientWidth) { cursor.style.transform = "translate3d(0,0,0)"; return; }
+    const x = Math.max(0, Math.min(canvas.clientWidth, position / duration * canvas.clientWidth));
+    cursor.style.transform = "translate3d(" + x.toFixed(2) + "px,0,0)";
+  };
+  const keepPlayheadVisible = position => {
+    const scroller = el("waveScroll"), canvas = el("waveform");
+    if (!duration || !canvas.clientWidth || !scroller.clientWidth) return;
+    const x = Math.max(0, Math.min(canvas.clientWidth, position / duration * canvas.clientWidth));
+    const left = scroller.scrollLeft, right = left + scroller.clientWidth;
+    const edge = Math.min(72, scroller.clientWidth * 0.18);
+    let target = left;
+    if (x > right - edge) target = x - scroller.clientWidth * 0.72;
+    else if (x < left + edge && left > 0) target = x - scroller.clientWidth * 0.20;
+    target = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, target));
+    // Aproximação progressiva: acompanha a música sem saltos de rolagem.
+    scroller.scrollLeft = left + (target - left) * 0.22;
   };
   const updateSelection = () => {
     const valid = pointA !== null && pointB !== null && pointB > pointA;
@@ -63,15 +140,120 @@
   el("pauseBtn").addEventListener("click", () => api()?.pause());
   el("stopBtn").addEventListener("click", () => api()?.stop());
   el("volume").addEventListener("input", e => api()?.setVolume(Number(e.target.value)));
+  el("testOboeBtn").addEventListener("click", () => {
+    if (!api()?.testOboe) {
+      el("oboeStatus").textContent = "Teste nativo disponível somente no APK Android.";
+      return;
+    }
+    el("testOboeBtn").disabled = true;
+    el("stopOboeBtn").disabled = false;
+    el("oboeStatus").textContent = "Preparando saída Oboe e decodificando áudio…";
+    api().testOboe();
+  });
+  el("stopOboeBtn").addEventListener("click", () => {
+    api()?.stopOboeTest?.();
+    el("oboeStatus").textContent = "Solicitando interrupção do teste…";
+  });
+  window.onOboeState = message => {
+    el("oboeStatus").textContent = String(message || "");
+    const state = String(message || "");
+    const finished = /concluído|interrompido|falha|não foi possível|importe um áudio|já está em execução/i.test(state);
+    if (finished) {
+      el("testOboeBtn").disabled = false;
+      el("stopOboeBtn").disabled = true;
+    } else {
+      el("testOboeBtn").disabled = true;
+      el("stopOboeBtn").disabled = false;
+    }
+  };
   el("seek").addEventListener("input", e => { seeking = true; el("currentTime").textContent = time(duration * Number(e.target.value) / 1000); });
   el("seek").addEventListener("change", e => { if (duration) api()?.seekTo(Math.round(duration * Number(e.target.value) / 1000)); seeking = false; });
   el("zoom").addEventListener("input", e => { zoom = Number(e.target.value); el("zoomValue").textContent = zoom + "×"; draw(); });
-  el("waveform").addEventListener("click", e => {
-    if (!duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left + el("waveScroll").scrollLeft;
-    api()?.seekTo(Math.round(Math.max(0, Math.min(1, x / e.currentTarget.clientWidth)) * duration));
+  let scrubPending = false, scrubPointerId = null, scrubStartX = 0, scrubStartY = 0, scrubStartPosition = 0;
+  const waveformPositionAt = clientX => {
+    const canvas = el("waveform");
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    return Math.max(0, Math.min(duration, x / Math.max(1, canvas.clientWidth) * duration));
+  };
+  const finishScrub = () => {
+    if (!scrubActive) { scrubPending = false; return; }
+    scrubActive = false;
+    scrubPending = false;
+    scrubHolding = false;
+    api()?.endScrub?.(Math.round(scrubPositionMs));
+    ignoreNextWaveClick = true;
+    window.setTimeout(() => { ignoreNextWaveClick = false; }, 180);
+  };
+  el("waveform").addEventListener("pointerdown", e => {
+    if (!duration || e.button !== 0 || scrubActive || scrubPending) return;
+    scrubPending = true;
+    scrubPointerId = e.pointerId;
+    scrubStartX = e.clientX;
+    scrubStartY = e.clientY;
+    scrubStartPosition = waveformPositionAt(e.clientX);
+    scrubPositionMs = scrubLastPositionMs = scrubStartPosition;
+    scrubLastTime = scrubLastMoveAt = performance.now();
+    scrubSpeed = 0;
+    try { el("waveform").setPointerCapture(e.pointerId); } catch (_) {}
   });
+  el("waveform").addEventListener("pointermove", e => {
+    if (!scrubPending || e.pointerId !== scrubPointerId) return;
+    if (!scrubActive) {
+      const horizontalDistance = Math.abs(e.clientX - scrubStartX);
+      const verticalDistance = Math.abs(e.clientY - scrubStartY);
+      if (horizontalDistance < 3 || horizontalDistance < verticalDistance * 1.15) return;
+      if (!api()?.beginScrub?.(scrubStartPosition)) {
+        scrubPending = false;
+        return;
+      }
+      scrubActive = true;
+      scrubHolding = true;
+      api()?.updateScrub?.(scrubStartPosition, 0, true);
+    }
+    e.preventDefault();
+    const now = performance.now();
+    const position = waveformPositionAt(e.clientX);
+    const elapsed = Math.max(1, now - scrubLastTime);
+    const rawSpeed = Math.max(-4, Math.min(4, (position - scrubLastPositionMs) / elapsed));
+    scrubSpeed = scrubSpeed * 0.35 + rawSpeed * 0.65;
+    const speed = scrubSpeed;
+    scrubPositionMs = position;
+    scrubLastPositionMs = position;
+    scrubLastTime = scrubLastMoveAt = now;
+    scrubHolding = false;
+    api()?.updateScrub?.(position, speed, false);
+    updatePlayhead(position);
+    keepPlayheadVisible(position);
+    el("currentTime").textContent = time(position);
+    el("seek").value = String(Math.min(1000, position / duration * 1000));
+    el("status").textContent = "SCRUBBING";
+  });
+  el("waveform").addEventListener("pointerup", e => {
+    if (e.pointerId !== scrubPointerId) return;
+    if (scrubActive) finishScrub();
+    else scrubPending = false;
+    scrubPointerId = null;
+  });
+  el("waveform").addEventListener("pointercancel", e => {
+    if (e.pointerId !== scrubPointerId) return;
+    if (scrubActive) finishScrub();
+    else scrubPending = false;
+    scrubPointerId = null;
+  });
+  el("waveform").addEventListener("lostpointercapture", () => {
+    if (scrubActive) finishScrub();
+    else scrubPending = false;
+    scrubPointerId = null;
+  });
+  el("waveform").addEventListener("click", e => {
+    if (ignoreNextWaveClick || scrubActive || !duration) return;
+    const position = waveformPositionAt(e.clientX);
+    api()?.seekTo(Math.round(position));
+  });
+  window.onScrubState = message => {
+    el("oboeStatus").textContent = String(message || "");
+  };
   el("setA").addEventListener("click", () => { pointA = currentPosition(); pointB = null; loopEnabled = false; updateSelection(); });
   el("setB").addEventListener("click", () => {
     const pos = currentPosition();
@@ -100,22 +282,31 @@
     peaks = Array.isArray(data) ? data.map(v => Math.max(0, Math.min(1, Number(v) || 0))) : [];
     el("waveNote").hidden = peaks.length > 0;
     if (!peaks.length) el("waveNote").textContent = "Não foi possível gerar a forma de onda deste arquivo.";
-    draw();
+    draw(); updatePlayhead(currentPosition());
   };
   window.onNativeWaveformError = message => { el("waveNote").hidden = false; el("waveNote").textContent = "Waveform indisponível: " + String(message); };
   window.onNativeAudioError = message => { el("error").textContent = String(message); };
-  window.onNativePosition = position => { if (!seeking && duration) el("seek").value = String(Math.min(1000, Number(position) / duration * 1000)); draw(); };
+  window.onNativePosition = position => { if (!seeking && duration) el("seek").value = String(Math.min(1000, Number(position) / duration * 1000)); updatePlayhead(Number(position) || 0); };
   window.addEventListener("resize", draw);
   window.setInterval(() => {
     const native = api(); if (!native || !native.hasAudio()) return;
-    const position = native.getPosition();
+    if (scrubActive && !scrubHolding && performance.now() - scrubLastMoveAt > 50) {
+      scrubHolding = true;
+      scrubSpeed = 0;
+      scrubLastPositionMs = scrubPositionMs;
+      scrubLastTime = performance.now();
+      api()?.updateScrub?.(scrubPositionMs, 0, true);
+    }
+    const position = scrubActive ? scrubPositionMs : native.getPosition();
     if (!seeking) { el("currentTime").textContent = time(position); el("seek").value = duration ? String(Math.min(1000, position / duration * 1000)) : "0"; }
-    el("status").textContent = native.isPlaying() ? "REPRODUZINDO" : "PRONTO";
+    const playing = scrubActive || native.isPlaying();
+    el("status").textContent = scrubActive ? "SCRUBBING" : (playing ? "REPRODUZINDO" : "PRONTO");
+    updatePlayhead(position);
+    if (playing) keepPlayheadVisible(position);
     if (loopEnabled && pointA !== null && pointB !== null && position >= pointB && position - lastLoopSeek > 80) {
       lastLoopSeek = position; native.seekTo(Math.round(pointA));
     }
-    draw();
-  }, 180);
+  }, 33);
   updateSelection();
   // Atualizador integrado: consulta o canal beta do GitHub Releases.
   let pendingUpdate = null;

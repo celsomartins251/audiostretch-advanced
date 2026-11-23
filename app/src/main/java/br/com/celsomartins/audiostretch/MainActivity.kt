@@ -32,7 +32,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.nio.ByteOrder
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.max
@@ -47,6 +49,9 @@ class MainActivity : ComponentActivity() {
     @Volatile private var pendingUpdateFile: File? = null
     private val decodeToken = AtomicInteger(0)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var oboeController: OboePlaybackController? = null
+    private var scrubController: ScrubPlaybackController? = null
+    @Volatile private var outputVolume = 1.0f
 
     private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -76,10 +81,26 @@ class MainActivity : ComponentActivity() {
         }
         webView.webChromeClient = WebChromeClient()
         webView.addJavascriptInterface(AudioBridge(), "AudioBridge")
+        oboeController = OboePlaybackController(this) { message ->
+            mainHandler.post {
+                if (::webView.isInitialized) {
+                    val safe = JSONObject.quote(message)
+                    webView.evaluateJavascript("window.onOboeState && window.onOboeState($safe)", null)
+                }
+            }
+        }
+        scrubController = ScrubPlaybackController(
+            context = this,
+            onState = { message -> updateMessage("onScrubState", message) },
+            waitForPrevious = { oboeController?.awaitStopped() }
+        )
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
     private fun loadAudio(uri: Uri) {
+        scrubController?.stop()
+        scrubController?.invalidateCache()
+        oboeController?.stop()
         decodeToken.incrementAndGet()
         releasePlayer()
         try {
@@ -95,6 +116,7 @@ class MainActivity : ComponentActivity() {
                     null
                 )
                 analyzeWaveform(uri, media.duration)
+                scrubController?.prepare(uri)
             }
             next.setOnErrorListener { _, what, extra ->
                 notifyError("Falha ao decodificar áudio ($what / $extra).")
@@ -132,7 +154,7 @@ class MainActivity : ComponentActivity() {
                 decoder.configure(audioFormat, null, null, 0)
                 decoder.start()
 
-                val peaks = FloatArray(1600)
+                val peaks = FloatArray(2400)
                 var sampleRate = audioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 var channels = audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
@@ -173,7 +195,9 @@ class MainActivity : ComponentActivity() {
                                 output.limit(info.offset + info.size)
                                 output.order(ByteOrder.nativeOrder())
                                 val bytesPerSample = when (pcmEncoding) {
-                                    AudioFormat.ENCODING_PCM_FLOAT -> 4
+                                    AudioFormat.ENCODING_PCM_FLOAT,
+                                    AudioFormat.ENCODING_PCM_32BIT -> 4
+                                    AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
                                     AudioFormat.ENCODING_PCM_8BIT -> 1
                                     else -> 2
                                 }
@@ -185,6 +209,13 @@ class MainActivity : ComponentActivity() {
                                     repeat(channels) { channel ->
                                         val sample = when (pcmEncoding) {
                                             AudioFormat.ENCODING_PCM_FLOAT -> output.getFloat()
+                                            AudioFormat.ENCODING_PCM_32BIT -> output.getInt() / 2147483648f
+                                            AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
+                                                val b0 = output.get().toInt() and 0xff
+                                                val b1 = output.get().toInt() and 0xff
+                                                val b2 = output.get().toInt()
+                                                ((b2 shl 16) or (b1 shl 8) or b0) / 8388608f
+                                            }
                                             AudioFormat.ENCODING_PCM_8BIT -> ((output.get().toInt() and 0xff) - 128) / 128f
                                             else -> output.getShort() / 32768f
                                         }
@@ -223,6 +254,94 @@ class MainActivity : ComponentActivity() {
                 try { decoder?.release() } catch (_: Exception) { }
                 try { extractor?.release() } catch (_: Exception) { }
             }
+        }
+    }
+
+    private fun startOboeTest() {
+        if (scrubController?.isBusy() == true) {
+            if (scrubController?.isRunning() == true) scrubController?.stop()
+            updateMessage("onOboeState", "Preparação ou scrubbing em andamento. Aguarde e tente novamente.")
+            return
+        }
+        val uri = currentUri
+        if (uri == null) {
+            updateMessage("onOboeState", "Importe um áudio antes de iniciar o teste Oboe.")
+            return
+        }
+        player?.let { if (it.isPlaying) it.pause() }
+        AudioNative.nativeSetGain(outputVolume)
+        val started = oboeController?.start(uri) ?: false
+        if (!started) {
+            updateMessage("onOboeState", "O teste Oboe já está em execução. Aguarde ou interrompa-o.")
+        }
+    }
+
+    private fun stopOboeTest() {
+        oboeController?.stop()
+    }
+
+    /**
+     * The WebView JavaScript bridge calls this method from a background thread.
+     * Wait until MediaPlayer is actually paused before opening the Oboe scrub
+     * stream; posting pause asynchronously allowed both transports to overlap.
+     */
+    private fun pausePlayerForScrub(): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            player?.let { media ->
+                if (media.isPlaying) media.pause()
+            }
+            return true
+        }
+
+        val completed = CountDownLatch(1)
+        runOnUiThread {
+            try {
+                player?.let { media ->
+                    if (media.isPlaying) media.pause()
+                }
+            } catch (_: IllegalStateException) {
+                // The player may have been released while the gesture began.
+            } finally {
+                completed.countDown()
+            }
+        }
+        return try {
+            completed.await(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+    }
+
+    private fun beginScrub(positionMs: Double): Boolean {
+        val uri = currentUri ?: return false
+        oboeController?.stop()
+        if (!pausePlayerForScrub()) {
+            updateMessage("onScrubState", "Não foi possível pausar a reprodução normal para iniciar o scrubbing.")
+            return false
+        }
+        AudioNative.nativeSetGain(outputVolume)
+        return scrubController?.start(uri, positionMs) ?: false
+    }
+
+    private fun updateScrub(positionMs: Double, speed: Double, hold: Boolean) {
+        scrubController?.update(positionMs, speed, hold)
+    }
+
+    private fun endScrub(positionMs: Double) {
+        scrubController?.stop()
+        runOnUiThread {
+            player?.seekTo(positionMs.toInt().coerceAtLeast(0))
+            publishPositionToWeb()
+        }
+    }
+
+    private fun publishPositionToWeb() {
+        if (::webView.isInitialized) {
+            webView.evaluateJavascript(
+                "window.onNativePosition && window.onNativePosition(${player?.currentPosition ?: 0})",
+                null
+            )
         }
     }
 
@@ -327,6 +446,10 @@ class MainActivity : ComponentActivity() {
         decodeToken.incrementAndGet()
         decodeExecutor.shutdownNow()
         updateExecutor.shutdownNow()
+        scrubController?.close()
+        scrubController = null
+        oboeController?.close()
+        oboeController = null
         releasePlayer()
         webView.removeJavascriptInterface("AudioBridge")
         webView.destroy()
@@ -335,22 +458,44 @@ class MainActivity : ComponentActivity() {
 
     inner class AudioBridge {
         @JavascriptInterface fun importAudio() { runOnUiThread { audioPicker.launch(arrayOf("audio/*")) } }
+        @JavascriptInterface fun testOboe() { runOnUiThread { startOboeTest() } }
+        @JavascriptInterface fun stopOboeTest() { runOnUiThread { this@MainActivity.stopOboeTest() } }
         @JavascriptInterface fun checkForUpdates() { this@MainActivity.checkForUpdates() }
         @JavascriptInterface fun downloadUpdate(url: String, digest: String) { this@MainActivity.downloadUpdate(url, digest.takeIf { it.isNotBlank() && it != "null" }) }
-        @JavascriptInterface fun play() { runOnUiThread { player?.let { if (!it.isPlaying) it.start() } } }
-        @JavascriptInterface fun pause() { runOnUiThread { player?.let { if (it.isPlaying) it.pause() } } }
+        @JavascriptInterface fun beginScrub(positionMs: Double): Boolean =
+            this@MainActivity.beginScrub(positionMs)
+        @JavascriptInterface fun updateScrub(positionMs: Double, speed: Double, hold: Boolean) {
+            this@MainActivity.updateScrub(positionMs, speed, hold)
+        }
+        @JavascriptInterface fun endScrub(positionMs: Double) {
+            this@MainActivity.endScrub(positionMs)
+        }
+        @JavascriptInterface fun play() {
+            scrubController?.stop()
+            runOnUiThread { player?.let { if (!it.isPlaying) it.start() } }
+        }
+        @JavascriptInterface fun pause() {
+            scrubController?.stop()
+            runOnUiThread { player?.let { if (it.isPlaying) it.pause() } }
+        }
         @JavascriptInterface fun stop() {
+            scrubController?.stop()
             runOnUiThread {
                 player?.let { if (it.isPlaying) it.pause(); it.seekTo(0) }
                 publishPosition()
             }
         }
         @JavascriptInterface fun seekTo(positionMs: Int) {
+            scrubController?.stop()
             runOnUiThread { player?.seekTo(positionMs.coerceAtLeast(0)); publishPosition() }
         }
         @JavascriptInterface fun setVolume(value: Float) {
             val volume = value.coerceIn(0f, 1f)
-            runOnUiThread { player?.setVolume(volume, volume) }
+            outputVolume = volume
+            runOnUiThread {
+                player?.setVolume(volume, volume)
+                AudioNative.nativeSetGain(volume)
+            }
         }
         @JavascriptInterface fun getPosition(): Int = player?.currentPosition ?: 0
         @JavascriptInterface fun getDuration(): Int = player?.duration ?: 0

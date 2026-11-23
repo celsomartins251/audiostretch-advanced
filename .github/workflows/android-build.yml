@@ -35,14 +35,18 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
             KEYSTORE_FILE="$RUNNER_TEMP/audiostretch-release.jks"
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-            keytool -list -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
-            echo "AUDIOSTRETCH_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Persistent signing key validated."
+            if printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE" && keytool -list -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+              echo "AUDIOSTRETCH_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+              echo "Persistent signing key validated."
+            else
+              rm -f "$KEYSTORE_FILE"
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::Persistent signing key is invalid. Continuing with an unsigned debug APK; beta release will be skipped."
+            fi
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Persistent signing is incomplete. Building a test APK only; beta release will be skipped."
+            echo "Persistent signing is incomplete. Building an unsigned debug APK; beta release will be skipped."
           fi
       - name: Build debug APK
         env:
