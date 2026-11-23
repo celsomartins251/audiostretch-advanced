@@ -3,7 +3,7 @@
   let duration = 0, seeking = false, peaks = [], zoom = 1, pointA = null, pointB = null;
   let loopEnabled = false, lastLoopSeek = 0, markers = [], markerKey = "";
   let scrubActive = false, scrubPositionMs = 0, scrubLastPositionMs = 0;
-  let scrubLastTime = 0, scrubLastMoveAt = 0, scrubHolding = false, ignoreNextWaveClick = false;
+  let scrubLastTime = 0, scrubLastMoveAt = 0, scrubHolding = false, scrubSpeed = 0, ignoreNextWaveClick = false;
   const api = () => window.AudioBridge || null;
   const time = ms => {
     const sec = Math.max(0, Math.floor(ms / 1000));
@@ -204,7 +204,9 @@
     const now = performance.now();
     const position = waveformPositionAt(e.clientX);
     const elapsed = Math.max(1, now - scrubLastTime);
-    const speed = Math.max(-4, Math.min(4, (position - scrubLastPositionMs) / elapsed));
+    const rawSpeed = Math.max(-4, Math.min(4, (position - scrubLastPositionMs) / elapsed));
+    scrubSpeed = scrubSpeed * 0.35 + rawSpeed * 0.65;
+    const speed = scrubSpeed;
     scrubPositionMs = position;
     scrubLastPositionMs = position;
     scrubLastTime = scrubLastMoveAt = now;
@@ -265,6 +267,9 @@
     const native = api(); if (!native || !native.hasAudio()) return;
     if (scrubActive && !scrubHolding && performance.now() - scrubLastMoveAt > 90) {
       scrubHolding = true;
+      scrubSpeed = 0;
+      scrubLastPositionMs = scrubPositionMs;
+      scrubLastTime = performance.now();
       api()?.updateScrub?.(scrubPositionMs, 0, true);
     }
     const position = scrubActive ? scrubPositionMs : native.getPosition();
