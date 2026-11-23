@@ -169,6 +169,7 @@
   el("seek").addEventListener("input", e => { seeking = true; el("currentTime").textContent = time(duration * Number(e.target.value) / 1000); });
   el("seek").addEventListener("change", e => { if (duration) api()?.seekTo(Math.round(duration * Number(e.target.value) / 1000)); seeking = false; });
   el("zoom").addEventListener("input", e => { zoom = Number(e.target.value); el("zoomValue").textContent = zoom + "×"; draw(); });
+  let scrubPending = false, scrubPointerId = null, scrubStartX = 0, scrubStartY = 0, scrubStartPosition = 0;
   const waveformPositionAt = clientX => {
     const canvas = el("waveform");
     const rect = canvas.getBoundingClientRect();
@@ -176,30 +177,40 @@
     return Math.max(0, Math.min(duration, x / Math.max(1, canvas.clientWidth) * duration));
   };
   const finishScrub = () => {
-    if (!scrubActive) return;
+    if (!scrubActive) { scrubPending = false; return; }
     scrubActive = false;
+    scrubPending = false;
     scrubHolding = false;
     api()?.endScrub?.(Math.round(scrubPositionMs));
     ignoreNextWaveClick = true;
     window.setTimeout(() => { ignoreNextWaveClick = false; }, 180);
   };
   el("waveform").addEventListener("pointerdown", e => {
-    if (!duration || e.button !== 0 || scrubActive) return;
-    const position = waveformPositionAt(e.clientX);
-    if (!api()?.beginScrub?.(position)) return;
-    e.preventDefault();
-    scrubActive = true;
-    scrubPositionMs = scrubLastPositionMs = position;
+    if (!duration || e.button !== 0 || scrubActive || scrubPending) return;
+    scrubPending = true;
+    scrubPointerId = e.pointerId;
+    scrubStartX = e.clientX;
+    scrubStartY = e.clientY;
+    scrubStartPosition = waveformPositionAt(e.clientX);
+    scrubPositionMs = scrubLastPositionMs = scrubStartPosition;
     scrubLastTime = scrubLastMoveAt = performance.now();
-    scrubHolding = true;
-    el("waveform").setPointerCapture(e.pointerId);
-    api()?.updateScrub?.(position, 0, true);
-    updatePlayhead(position);
-    el("currentTime").textContent = time(position);
-    el("status").textContent = "SCRUBBING";
+    scrubSpeed = 0;
+    try { el("waveform").setPointerCapture(e.pointerId); } catch (_) {}
   });
   el("waveform").addEventListener("pointermove", e => {
-    if (!scrubActive) return;
+    if (!scrubPending || e.pointerId !== scrubPointerId) return;
+    if (!scrubActive) {
+      const horizontalDistance = Math.abs(e.clientX - scrubStartX);
+      const verticalDistance = Math.abs(e.clientY - scrubStartY);
+      if (horizontalDistance < 3 || horizontalDistance < verticalDistance * 1.15) return;
+      if (!api()?.beginScrub?.(scrubStartPosition)) {
+        scrubPending = false;
+        return;
+      }
+      scrubActive = true;
+      scrubHolding = true;
+      api()?.updateScrub?.(scrubStartPosition, 0, true);
+    }
     e.preventDefault();
     const now = performance.now();
     const position = waveformPositionAt(e.clientX);
@@ -218,9 +229,23 @@
     el("seek").value = String(Math.min(1000, position / duration * 1000));
     el("status").textContent = "SCRUBBING";
   });
-  el("waveform").addEventListener("pointerup", finishScrub);
-  el("waveform").addEventListener("pointercancel", finishScrub);
-  el("waveform").addEventListener("lostpointercapture", finishScrub);
+  el("waveform").addEventListener("pointerup", e => {
+    if (e.pointerId !== scrubPointerId) return;
+    if (scrubActive) finishScrub();
+    else scrubPending = false;
+    scrubPointerId = null;
+  });
+  el("waveform").addEventListener("pointercancel", e => {
+    if (e.pointerId !== scrubPointerId) return;
+    if (scrubActive) finishScrub();
+    else scrubPending = false;
+    scrubPointerId = null;
+  });
+  el("waveform").addEventListener("lostpointercapture", () => {
+    if (scrubActive) finishScrub();
+    else scrubPending = false;
+    scrubPointerId = null;
+  });
   el("waveform").addEventListener("click", e => {
     if (ignoreNextWaveClick || scrubActive || !duration) return;
     const position = waveformPositionAt(e.clientX);
