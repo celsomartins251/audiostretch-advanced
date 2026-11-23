@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -30,6 +31,7 @@ internal class ScrubPlaybackController(
     private val worker = Executors.newSingleThreadExecutor()
     private val cancelled = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
+    private val preparingCount = AtomicInteger(0)
     private val version = AtomicLong(0L)
     private val cacheGeneration = AtomicLong(0L)
     private val command = AtomicReference(Command(0.0, 0.0, true, 0L))
@@ -45,6 +47,7 @@ internal class ScrubPlaybackController(
      */
     fun prepare(uri: Uri) {
         val generation = cacheGeneration.get()
+        preparingCount.incrementAndGet()
         worker.execute {
             var opened = false
             try {
@@ -87,6 +90,7 @@ internal class ScrubPlaybackController(
                 }
             } finally {
                 if (opened) AudioNative.nativeClose()
+                preparingCount.decrementAndGet()
             }
         }
     }
@@ -219,6 +223,7 @@ internal class ScrubPlaybackController(
     }
 
     fun isRunning(): Boolean = running.get()
+    fun isBusy(): Boolean = running.get() || preparingCount.get() > 0
 
     /** Drops the previous file's PCM cache after its active worker has stopped. */
     fun invalidateCache() {
