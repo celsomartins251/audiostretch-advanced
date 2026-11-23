@@ -31,11 +31,65 @@ internal class ScrubPlaybackController(
     private val cancelled = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
     private val version = AtomicLong(0L)
+    private val cacheGeneration = AtomicLong(0L)
     private val command = AtomicReference(Command(0.0, 0.0, true, 0L))
     private val cacheLock = Any()
     private var cachedUri: Uri? = null
     private var cachedPcm: PcmFileCache? = null
     private var invalidateWhenStopped = false
+
+    /**
+     * Decode the random-access cache after import, before the first gesture.
+     * This runs on the same worker as playback, so a drag that starts during
+     * preparation is queued and begins as soon as the cache is ready.
+     */
+    fun prepare(uri: Uri) {
+        val generation = cacheGeneration.get()
+        worker.execute {
+            var opened = false
+            try {
+                onState("Preparando cache de áudio para o scrubbing…")
+                waitForPrevious()
+                if (generation != cacheGeneration.get()) return@execute
+                if (!AudioNative.nativeOpen()) error("Não foi possível preparar o motor Oboe.")
+                opened = true
+                check(AudioNative.nativePause()) { "Não foi possível pausar Oboe durante a preparação." }
+                val rate = AudioNative.nativeSampleRate()
+                check(rate in 8_000..192_000) { "Taxa de saída Oboe inválida." }
+
+                val reusable = synchronized(cacheLock) {
+                    cachedPcm?.takeIf { cachedUri == uri && it.sampleRate == rate }
+                }
+                if (reusable == null) {
+                    val built = PcmFileCache.build(
+                        context = appContext,
+                        uri = uri,
+                        outputSampleRate = rate,
+                        shouldCancel = { generation != cacheGeneration.get() }
+                    )
+                    synchronized(cacheLock) {
+                        if (generation == cacheGeneration.get()) {
+                            val previous = cachedPcm
+                            cachedPcm = built
+                            cachedUri = uri
+                            if (previous !== built) previous?.close()
+                        } else {
+                            built.close()
+                        }
+                    }
+                }
+                if (generation == cacheGeneration.get()) {
+                    onState("Cache de scrubbing preparado · $rate Hz")
+                }
+            } catch (error: Exception) {
+                if (generation == cacheGeneration.get()) {
+                    onState(error.message ?: "Não foi possível preparar o cache de scrubbing.")
+                }
+            } finally {
+                if (opened) AudioNative.nativeClose()
+            }
+        }
+    }
 
     fun start(uri: Uri, initialPositionMs: Double): Boolean {
         if (!running.compareAndSet(false, true)) return false
@@ -168,6 +222,7 @@ internal class ScrubPlaybackController(
 
     /** Drops the previous file's PCM cache after its active worker has stopped. */
     fun invalidateCache() {
+        cacheGeneration.incrementAndGet()
         synchronized(cacheLock) {
             if (running.get()) {
                 invalidateWhenStopped = true
@@ -182,6 +237,7 @@ internal class ScrubPlaybackController(
 
     override fun close() {
         cancelled.set(true)
+        cacheGeneration.incrementAndGet()
         worker.shutdownNow()
         synchronized(cacheLock) {
             if (running.get()) {
