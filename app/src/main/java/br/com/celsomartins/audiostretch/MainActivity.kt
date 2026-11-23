@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private val decodeToken = AtomicInteger(0)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var oboeController: OboePlaybackController? = null
+    private var scrubController: ScrubPlaybackController? = null
     @Volatile private var outputVolume = 1.0f
 
     private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -86,10 +87,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        scrubController = ScrubPlaybackController(this) { message ->
+            updateMessage("onScrubState", message)
+        }
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
     private fun loadAudio(uri: Uri) {
+        scrubController?.stop()
         oboeController?.stop()
         decodeToken.incrementAndGet()
         releasePlayer()
@@ -247,6 +252,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOboeTest() {
+        scrubController?.stop()
         val uri = currentUri
         if (uri == null) {
             updateMessage("onOboeState", "Importe um áudio antes de iniciar o teste Oboe.")
@@ -262,6 +268,35 @@ class MainActivity : ComponentActivity() {
 
     private fun stopOboeTest() {
         oboeController?.stop()
+    }
+
+    private fun beginScrub(positionMs: Double): Boolean {
+        val uri = currentUri ?: return false
+        oboeController?.stop()
+        AudioNative.nativeSetGain(outputVolume)
+        runOnUiThread { player?.let { if (it.isPlaying) it.pause() } }
+        return scrubController?.start(uri, positionMs) ?: false
+    }
+
+    private fun updateScrub(positionMs: Double, speed: Double, hold: Boolean) {
+        scrubController?.update(positionMs, speed, hold)
+    }
+
+    private fun endScrub(positionMs: Double) {
+        scrubController?.stop()
+        runOnUiThread {
+            player?.seekTo(positionMs.toInt().coerceAtLeast(0))
+            publishPositionToWeb()
+        }
+    }
+
+    private fun publishPositionToWeb() {
+        if (::webView.isInitialized) {
+            webView.evaluateJavascript(
+                "window.onNativePosition && window.onNativePosition(${player?.currentPosition ?: 0})",
+                null
+            )
+        }
     }
 
     private fun notifyError(message: String) {
@@ -365,6 +400,8 @@ class MainActivity : ComponentActivity() {
         decodeToken.incrementAndGet()
         decodeExecutor.shutdownNow()
         updateExecutor.shutdownNow()
+        scrubController?.close()
+        scrubController = null
         oboeController?.close()
         oboeController = null
         releasePlayer()
@@ -379,15 +416,31 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface fun stopOboeTest() { runOnUiThread { this@MainActivity.stopOboeTest() } }
         @JavascriptInterface fun checkForUpdates() { this@MainActivity.checkForUpdates() }
         @JavascriptInterface fun downloadUpdate(url: String, digest: String) { this@MainActivity.downloadUpdate(url, digest.takeIf { it.isNotBlank() && it != "null" }) }
-        @JavascriptInterface fun play() { runOnUiThread { player?.let { if (!it.isPlaying) it.start() } } }
-        @JavascriptInterface fun pause() { runOnUiThread { player?.let { if (it.isPlaying) it.pause() } } }
+        @JavascriptInterface fun beginScrub(positionMs: Double): Boolean =
+            this@MainActivity.beginScrub(positionMs)
+        @JavascriptInterface fun updateScrub(positionMs: Double, speed: Double, hold: Boolean) {
+            this@MainActivity.updateScrub(positionMs, speed, hold)
+        }
+        @JavascriptInterface fun endScrub(positionMs: Double) {
+            this@MainActivity.endScrub(positionMs)
+        }
+        @JavascriptInterface fun play() {
+            scrubController?.stop()
+            runOnUiThread { player?.let { if (!it.isPlaying) it.start() } }
+        }
+        @JavascriptInterface fun pause() {
+            scrubController?.stop()
+            runOnUiThread { player?.let { if (it.isPlaying) it.pause() } }
+        }
         @JavascriptInterface fun stop() {
+            scrubController?.stop()
             runOnUiThread {
                 player?.let { if (it.isPlaying) it.pause(); it.seekTo(0) }
                 publishPosition()
             }
         }
         @JavascriptInterface fun seekTo(positionMs: Int) {
+            scrubController?.stop()
             runOnUiThread { player?.seekTo(positionMs.coerceAtLeast(0)); publishPosition() }
         }
         @JavascriptInterface fun setVolume(value: Float) {
