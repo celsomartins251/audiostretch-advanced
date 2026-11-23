@@ -48,14 +48,15 @@ internal class ScrubPlaybackController(
                 val rate = AudioNative.nativeSampleRate()
                 check(rate in 8_000..192_000) { "Taxa de saída Oboe inválida." }
 
-                cache = PcmFileCache.build(
+                val builtCache = PcmFileCache.build(
                     context = appContext,
                     uri = uri,
                     outputSampleRate = rate,
                     shouldCancel = { cancelled.get() }
                 )
+                cache = builtCache
                 check(!cancelled.get()) { "Scrubbing cancelado." }
-                val renderer = ScrubPcmRenderer(cache)
+                val renderer = ScrubPcmRenderer(builtCache)
                 onState("Scrubbing pronto · $rate Hz")
 
                 var positionFrame = 0.0
@@ -68,7 +69,7 @@ internal class ScrubPlaybackController(
                     val latest = command.get()
                     if (latest.version != appliedVersion) {
                         positionFrame = (latest.positionMs.coerceAtLeast(0.0) * rate / 1_000.0)
-                            .coerceIn(0.0, cache.totalFrames.toDouble())
+                            .coerceIn(0.0, builtCache.totalFrames.toDouble())
                         speed = latest.speed.coerceIn(-4.0, 4.0)
                         hold = latest.hold
                         holdPhase = 0L
@@ -91,14 +92,9 @@ internal class ScrubPlaybackController(
                     )
                     var offset = 0
                     while (offset < block.samples.size && !cancelled.get()) {
-                        val count = AudioNative.nativeWritePcm(
-                            if (offset == 0 && block.samples.size == block.samples.size) {
-                                block.samples
-                            } else {
-                                block.samples.copyOfRange(offset, block.samples.size)
-                            },
-                            block.samples.size - offset
-                        )
+                        val chunk = if (offset == 0) block.samples
+                            else block.samples.copyOfRange(offset, block.samples.size)
+                        val count = AudioNative.nativeWritePcm(chunk, chunk.size)
                         if (count > 0) offset += count else Thread.sleep(2)
                     }
                     positionFrame = block.nextPositionFrame
