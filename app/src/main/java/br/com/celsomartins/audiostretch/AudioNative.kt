@@ -14,5 +14,8 @@ object AudioNative {
     external fun nativeClearBuffer(): Boolean
     external fun nativeWritePcm(samples: FloatArray, length: Int): Int
     external fun nativeQueuedSamples(): Long
+    /** Requests that the audio callback discard queued PCM; wait for the token before refilling. */
+    external fun nativeRequestFlush(): Long
+    external fun nativeIsFlushComplete(token: Long): Boolean
     external fun nativeStatus(): String
 }
