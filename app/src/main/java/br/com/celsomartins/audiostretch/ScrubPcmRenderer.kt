@@ -139,6 +139,6 @@ internal class ScrubPcmRenderer(
         private const val CHANNELS = 2
         private const val MAX_OUTPUT_FRAMES = 2_048
         private const val MAX_SPEED = 4.0
-        private const val MIN_SPEED = 0.025
+        private const val MIN_SPEED = 0.001
     }
 }
