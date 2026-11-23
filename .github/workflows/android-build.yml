@@ -16,18 +16,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-
       - name: Prepare persistent signing key
         id: signing
         env:
@@ -36,18 +33,23 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
           if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Assinatura persistente incompleta. Será gerado somente APK de diagnóstico; nenhuma release atualizável será publicada."
+            echo "::warning::Faltam secrets da assinatura persistente. Será gerado APK apenas para diagnóstico."
             exit 0
           fi
           KEYSTORE_FILE="$RUNNER_TEMP/audiostretch-release.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-          keytool -list -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          if ! printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"; then
+            echo "::warning::O secret ANDROID_KEYSTORE_BASE64 não contém Base64 válido."
+            exit 0
+          fi
+          if ! keytool -list -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::warning::JKS recebido, mas senha do keystore ou alias não validou. Nenhum APK de atualização será publicado."
+            exit 0
+          fi
           echo "AUDIOSTRETCH_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "Assinatura persistente validada."
-
       - name: Build signed release APK
         if: ${{ steps.signing.outputs.enabled == 'true' }}
         env:
@@ -59,14 +61,12 @@ jobs:
             -PciVersionCode=${{ github.run_number }} \
             -PciVersionName=0.1.${{ github.run_number }}-beta
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/audiostretch-advanced-beta.apk"
-
-      - name: Build unsigned-persistence diagnostic APK
+      - name: Build diagnostic APK only
         if: ${{ steps.signing.outputs.enabled != 'true' }}
         run: |
           gradle --no-daemon assembleDebug \
             -PciVersionCode=${{ github.run_number }} \
             -PciVersionName=0.1.${{ github.run_number }}-diagnostic
-
       - name: Upload signed release artifact
         if: ${{ steps.signing.outputs.enabled == 'true' }}
         uses: actions/upload-artifact@v4
@@ -74,7 +74,6 @@ jobs:
           name: audiostretch-advanced-beta-signed
           path: ${{ runner.temp }}/audiostretch-advanced-beta.apk
           if-no-files-found: error
-
       - name: Upload diagnostic artifact
         if: ${{ steps.signing.outputs.enabled != 'true' }}
         uses: actions/upload-artifact@v4
@@ -82,7 +81,6 @@ jobs:
           name: audiostretch-advanced-diagnostic-only
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
       - name: Publish beta release
         if: ${{ github.event_name != 'pull_request' && steps.signing.outputs.enabled == 'true' }}
         uses: softprops/action-gh-release@v2
