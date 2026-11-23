@@ -97,6 +97,7 @@ class MainActivity : ComponentActivity() {
 
     private fun loadAudio(uri: Uri) {
         scrubController?.stop()
+        scrubController?.invalidateCache()
         oboeController?.stop()
         decodeToken.incrementAndGet()
         releasePlayer()
