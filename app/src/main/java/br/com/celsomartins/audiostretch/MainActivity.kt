@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
                     null
                 )
                 analyzeWaveform(uri, media.duration)
+                scrubController?.prepare(uri)
             }
             next.setOnErrorListener { _, what, extra ->
                 notifyError("Falha ao decodificar áudio ($what / $extra).")
