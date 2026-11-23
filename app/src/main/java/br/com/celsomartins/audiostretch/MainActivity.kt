@@ -32,7 +32,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.nio.ByteOrder
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.max
@@ -278,11 +280,47 @@ class MainActivity : ComponentActivity() {
         oboeController?.stop()
     }
 
+    /**
+     * The WebView JavaScript bridge calls this method from a background thread.
+     * Wait until MediaPlayer is actually paused before opening the Oboe scrub
+     * stream; posting pause asynchronously allowed both transports to overlap.
+     */
+    private fun pausePlayerForScrub(): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            player?.let { media ->
+                if (media.isPlaying) media.pause()
+            }
+            return true
+        }
+
+        val completed = CountDownLatch(1)
+        runOnUiThread {
+            try {
+                player?.let { media ->
+                    if (media.isPlaying) media.pause()
+                }
+            } catch (_: IllegalStateException) {
+                // The player may have been released while the gesture began.
+            } finally {
+                completed.countDown()
+            }
+        }
+        return try {
+            completed.await(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+    }
+
     private fun beginScrub(positionMs: Double): Boolean {
         val uri = currentUri ?: return false
         oboeController?.stop()
+        if (!pausePlayerForScrub()) {
+            updateMessage("onScrubState", "Não foi possível pausar a reprodução normal para iniciar o scrubbing.")
+            return false
+        }
         AudioNative.nativeSetGain(outputVolume)
-        runOnUiThread { player?.let { if (it.isPlaying) it.pause() } }
         return scrubController?.start(uri, positionMs) ?: false
     }
 
